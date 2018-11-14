@@ -1,6 +1,10 @@
 opam-version: "2.0"
 name:         "colombe"
 license:      "MIT"
+mainainer:    "Gwenaëlle Lecat"
+description: """This package purpose is to provide an implementation of the
+RFC 5321 about SMTP standard in OCaml.
+"""
 
 build: [
   [ "dune" "subst" ]

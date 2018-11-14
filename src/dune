@@ -1,5 +1,7 @@
 (library
  (name colombe)
- (modules colombe)
+ (modules colombe
+          request
+          reply)
  (public_name colombe)
  (libraries angstrom))
