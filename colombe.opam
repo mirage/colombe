@@ -1,10 +1,6 @@
 opam-version: "2.0"
 name:         "colombe"
 license:      "MIT"
-description: """This package provide an implementation of RFC1951 in OCaml.
-
-We provide a pure non-blocking interface to inflate and deflate data flow.
-"""
 
 build: [
   [ "dune" "subst" ]
