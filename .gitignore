@@ -1,0 +1,11 @@
+_build
+setup.data
+setup.log
+doc/*.html
+*.native
+*.byte
+*.so
+*.tar.gz
+_tests
+*.merlin
+*.install
