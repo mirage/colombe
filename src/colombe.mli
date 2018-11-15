@@ -1,19 +1,20 @@
 module Request: sig
   type standard_command = [
-    | `EHLO
-    | `HELO
-    | `MAIL
-    | `RCPT
+    | `EHLO of string
+    | `HELO of string
+    | `MAIL of string
+    | `RCPT of string
     | `DATA
     | `RSET
     | `NOOP
     | `QUIT
-    | `VRFY
+    | `VRFY of string
   ]
 
   type t = [
     | standard_command
-    | `Other of string
+    | `Text of string
+    | `TextEnd
   ]
 
   val pp: Format.formatter -> t -> unit
