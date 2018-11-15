@@ -80,7 +80,7 @@ module Reply = struct
       | `Other (code, texts) -> Format.fprintf ppf "Other code: '%d' - [" code; List.iter (Format.fprintf ppf "'%s', ") texts; Format.fprintf ppf "]\n%!"
 
   let compare t1 t2 =
-    let cmp_str_list l1 l2 = List.length l1 == List.length l2 && List.for_all (fun (s1, s2) -> String.compare s1 s2 == 0) (List.combine l1 l2) in
+    let cmp_str_list l1 l2 = List.length l1 = List.length l2 && List.for_all (fun (s1, s2) -> String.compare s1 s2 = 0) (List.combine l1 l2) in
     match (t1, t2) with
     | (`PP_211 (texts1), `PP_211 (texts2))
     | (`PP_214 (texts1), `PP_214 (texts2))
@@ -106,7 +106,7 @@ module Reply = struct
     | (`PN_553 (texts1), `PN_553 (texts2))
     | (`PN_554 (texts1), `PN_554 (texts2))
     | (`PN_555 (texts1), `PN_555 (texts2)) -> cmp_str_list texts1 texts2
-    | (`Other (code1, texts1), `Other (code2, texts2)) when code1 == code2 -> cmp_str_list texts1 texts2
+    | (`Other (code1, texts1), `Other (code2, texts2)) when code1 = code2 -> cmp_str_list texts1 texts2
     | _ -> false
 
   let is_space = function | ' ' | '\t' -> true | _ -> false
@@ -160,7 +160,7 @@ module Reply = struct
   let parse_reply =
     lift3 (fun multilines code text ->
             let (codes, texts) = List.split multilines in
-            if (List.for_all (fun nbr -> nbr == code) codes)
+            if (List.for_all (fun nbr -> nbr = code) codes)
             then
               create_code code (texts @ text)
             else
