@@ -4,4 +4,4 @@
           request
           reply)
  (public_name colombe)
- (libraries angstrom))
+ (libraries fmt angstrom))
