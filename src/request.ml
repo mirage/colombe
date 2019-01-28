@@ -22,17 +22,17 @@ module Request = struct
 
   let pp : Format.formatter -> t -> unit =
     fun ppf -> function 
-      | `EHLO txt -> Format.fprintf ppf "Command EHLO with arg %s\n%!" txt
-      | `HELO txt -> Format.fprintf ppf "Command HELO with arg %s\n%!" txt
-      | `MAIL txt -> Format.fprintf ppf "Command MAIL with arg %s\n%!" txt
-      | `RCPT txt -> Format.fprintf ppf "Command RCPT with arg %s\n%!" txt
-      | `DATA -> Format.fprintf ppf "Command DATA\n%!" 
-      | `RSET -> Format.fprintf ppf "Command RSET\n%!"
-      | `NOOP -> Format.fprintf ppf "Command NOOP\n%!"
-      | `QUIT -> Format.fprintf ppf "Command QUIT\n%!"
-      | `VRFY txt -> Format.fprintf ppf "Command VRFY with arg %s\n%!" txt
-      | `Text txt -> Format.fprintf ppf "Text '%s'\n%!" txt
-      | `TextEnd -> Format.fprintf ppf "Text end\n%!"
+      | `EHLO txt -> Fmt.pf ppf "Command EHLO with arg %s\n%!" txt
+      | `HELO txt -> Fmt.pf ppf "Command HELO with arg %s\n%!" txt
+      | `MAIL txt -> Fmt.pf ppf "Command MAIL with arg %s\n%!" txt
+      | `RCPT txt -> Fmt.pf ppf "Command RCPT with arg %s\n%!" txt
+      | `DATA -> Fmt.pf ppf "Command DATA\n%!" 
+      | `RSET -> Fmt.pf ppf "Command RSET\n%!"
+      | `NOOP -> Fmt.pf ppf "Command NOOP\n%!"
+      | `QUIT -> Fmt.pf ppf "Command QUIT\n%!"
+      | `VRFY txt -> Fmt.pf ppf "Command VRFY with arg %s\n%!" txt
+      | `Text txt -> Fmt.pf ppf "Text '%s'\n%!" txt
+      | `TextEnd -> Fmt.pf ppf "Text end\n%!"
 
   let compare t1 t2 =
     match (t1, t2) with
