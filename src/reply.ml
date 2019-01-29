@@ -116,7 +116,7 @@ module Reply = struct
   let integer =
     take_while1 (function '0' .. '9' -> true | _ -> false) >>| int_of_string
 
-  let create_code code texts =
+  let v code texts =
     match code with
       | 211 -> `PP_211 (texts)
       | 214 -> `PP_214 (texts)
@@ -162,7 +162,7 @@ module Reply = struct
             let (codes, texts) = List.split multilines in
             if (List.for_all (fun nbr -> nbr = code) codes)
             then
-              create_code code (texts @ text)
+              v code (texts @ text)
             else
               raise (MultilineInvalidCode (code::codes)))
       (many parse_multiline)
@@ -227,4 +227,204 @@ module Reply = struct
     | `PN_554 (texts) -> texts
     | `PN_555 (texts) -> texts
     | `Other (_, texts) -> texts
+end
+
+module Decoder = struct
+  [@@@warning "-32-34"]
+
+  type decoder =
+    { buffer : Bytes.t
+    ; mutable pos : int
+    ; mutable max : int }
+
+  type error =
+    | End_of_input
+    | Expected_char of char
+    | Unexpected_char of char
+    | Expected_string of string
+    | Expected_eol
+    | No_enough_space
+    | Invalid_code of int
+    | Assert_predicate of (char -> bool)
+
+  type 'v state =
+    | Ok of 'v
+    | Read of { buffer : Bytes.t; off : int; len : int; continue : int -> 'v state }
+    | Error of info
+  and info = { error : error; buffer : Bytes.t; committed : int }
+
+  exception Leave of info
+
+  let return (type v) (v : v) _ : v state = Ok v
+
+  let safe k decoder : 'v state =
+    try k decoder with Leave info -> Error info
+
+  let end_of_input decoder = decoder.max
+
+  let peek_char decoder =
+    if decoder.pos < end_of_input decoder
+    then Some (Bytes.unsafe_get decoder.buffer decoder.pos)
+    else None
+    (* XXX(dinosaure): in [agnstrom] world, [peek_char] should try to read input
+       again. However, SMTP is a line-directed protocol where we can ensure to
+       have the full line at the top (with a queue) instead to have a
+       systematic check (which slow-down the process). *)
+
+  let leave_with (decoder : decoder) error =
+    raise (Leave { error; buffer= decoder.buffer; committed= decoder.pos; })
+
+  let junk_char decoder =
+    if decoder.pos < end_of_input decoder
+    then decoder.pos <- decoder.pos + 1
+    else leave_with decoder End_of_input
+
+  let char chr decoder =
+    match peek_char decoder with
+    | Some chr' ->
+      if not (Char.equal chr chr') then leave_with decoder (Expected_char chr) ;
+      junk_char decoder
+    | None -> leave_with decoder End_of_input
+
+  let satisfy predicate decoder =
+    match peek_char decoder with
+    | Some chr ->
+      if not (predicate chr) then leave_with decoder (Assert_predicate predicate) ;
+      junk_char decoder
+    | None -> leave_with decoder End_of_input
+
+  let space = fun decoder -> char ' ' decoder
+  let null = fun decoder -> char '\000' decoder
+
+  type sub = bytes * int * int
+
+  let while1 predicate decoder =
+    let idx = ref decoder.pos in
+    while !idx < end_of_input decoder
+          && predicate (Bytes.unsafe_get decoder.buffer !idx)
+    do incr idx done ;
+    if !idx - decoder.pos = 0
+    then leave_with decoder (Assert_predicate predicate) ;
+    let sub = decoder.buffer, decoder.pos, decoder.pos - !idx in
+    (* XXX(dinosaure): avoid sub-string operation. *)
+    decoder.pos <- !idx ; sub
+
+  let while0 predicate decoder =
+    let idx = ref decoder.pos in
+    while !idx < end_of_input decoder
+          && predicate (Bytes.unsafe_get decoder.buffer !idx)
+    do incr idx done ;
+    let sub = decoder.buffer, decoder.pos, decoder.pos - !idx in
+    decoder.pos <- !idx ; sub
+
+  let string str decoder =
+    let idx = ref 0 in
+    let len = String.length str in
+    while decoder.pos + !idx < end_of_input decoder
+          && !idx < len
+          && Char.equal
+            (Bytes.unsafe_get decoder.buffer (decoder.pos + !idx))
+            (String.unsafe_get str !idx)
+    do incr idx done ;
+    if !idx = len then str else leave_with decoder (Expected_string str)
+
+  let crlf = fun decoder -> string "\r\n" decoder
+  let is_digit = function '0' .. '9' -> true | _ -> false
+
+  external unsafe_get_uint8 : bytes -> int -> int = "%string_unsafe_get"
+
+  let number decoder =
+    let raw, off, len = while1 is_digit decoder in
+    let idx = ref 0 in
+    let res = ref 0 in
+    while !idx < len
+    do res := (!res * 10) + (unsafe_get_uint8 raw (off + !idx) - 48) ; incr idx done ;
+    !res
+
+  let dash = fun decoder -> char '-' decoder
+
+  let take_while_eol decoder =
+    let idx = ref decoder.pos in
+    let has_cr = ref false in
+    while !idx < end_of_input decoder
+          && not (Char.equal '\n' (Bytes.unsafe_get decoder.buffer !idx) && !has_cr)
+    do has_cr := Char.equal '\r' (Bytes.unsafe_get decoder.buffer !idx) ; incr idx done ;
+    if !idx < end_of_input decoder
+    && Char.equal '\n' (Bytes.unsafe_get decoder.buffer !idx)
+    && !has_cr
+    then decoder.buffer, decoder.pos, !idx - decoder.pos
+    else leave_with decoder Expected_eol
+
+  let at_least_one_line decoder =
+    let pos = ref decoder.pos in
+    let has_cr = ref false in
+    while !pos < decoder.max
+          && not (Char.equal '\n' (Bytes.unsafe_get decoder.buffer !pos) && !has_cr)
+    do has_cr := Char.equal '\r' (Bytes.unsafe_get decoder.buffer !pos) ; incr pos done ;
+    (!pos < decoder.max
+     && Char.equal '\n' (Bytes.unsafe_get decoder.buffer !pos)
+     && !has_cr)
+
+  (* XXX(dinosaure): [prompt] expects at least, one line. So we have a /loop/
+     which fills [decoder.buffer] while we did not have CRLF inside
+     [decoder.buffer].
+
+     Of course, we have a limit: [Bytes.length decoder.buffer]. *)
+  let prompt k decoder =
+    if decoder.pos > 0
+    then (* XXX(dinosaure): compress *)
+      (let rest = decoder.max - decoder.pos in
+       Bytes.unsafe_blit decoder.buffer decoder.pos decoder.buffer 0 rest ;
+       decoder.max <- rest ;
+       decoder.pos <- 0 ) ;
+    let rec go off =
+      if off = Bytes.length decoder.buffer
+      then Error { error= No_enough_space; buffer= decoder.buffer; committed= decoder.pos; }
+      else if not (at_least_one_line decoder)
+      then Read { buffer= decoder.buffer
+                ; off
+                ; len= Bytes.length decoder.buffer - off
+                ; continue= (fun len -> go (off + len)) }
+      else
+        ( decoder.max <- off ;
+          safe k decoder ) in
+    go decoder.max
+
+  let response k decoder =
+    let rec go code lines decoder =
+      let code' = number decoder in
+      if code <> code' then leave_with decoder (Invalid_code code') ;
+      match peek_char decoder with
+      | Some ' ' ->
+        junk_char decoder ;
+        let data = take_while_eol decoder in
+        let reply = Reply.v code (List.rev (data :: lines)) in
+        k reply decoder
+      | Some '-' ->
+        junk_char decoder ;
+        let data = take_while_eol decoder in
+        if end_of_input decoder = decoder.pos
+        then prompt (go code lines) decoder
+        else go code (data :: lines) decoder
+      | Some chr ->
+        leave_with decoder (Unexpected_char chr)
+      | None ->
+        leave_with decoder End_of_input in
+    let code = number decoder in
+    match peek_char decoder with
+    | Some ' ' ->
+      junk_char decoder ;
+      let data = take_while_eol decoder in
+      let reply = Reply.v code [ data ] in
+      k reply decoder
+    | Some '-' ->
+      junk_char decoder ;
+      let data = take_while_eol decoder in
+      if end_of_input decoder = decoder.pos
+      then prompt (go code [ data ]) decoder
+      else go code [ data ] decoder
+    | Some chr ->
+      leave_with decoder (Unexpected_char chr)
+    | None ->
+      leave_with decoder End_of_input
 end
