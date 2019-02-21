@@ -50,6 +50,9 @@ end
 module Decoder : sig
   type decoder
 
+  val decoder_from : string -> decoder
+  val decoder : unit -> decoder
+
   type error =
     | End_of_input
     | Expected_char of char
@@ -60,6 +63,8 @@ module Decoder : sig
     | Invalid_code of int
     | Assert_predicate of (char -> bool)
 
+  val pp_error : error Fmt.t
+
   type 'v state =
     | Ok of 'v
     | Read of { buffer : Bytes.t; off : int; len : int; continue : int -> 'v state }
@@ -67,4 +72,5 @@ module Decoder : sig
   and info = { error : error; buffer : Bytes.t; committed : int }
 
   val response : decoder -> Reply.t state
+  val of_string : string -> (Reply.t, error) result
 end

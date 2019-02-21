@@ -132,6 +132,18 @@ module Decoder = struct
     ; mutable pos : int
     ; mutable max : int }
 
+  let io_buffer_size = 65536
+
+  let decoder () =
+    { buffer= Bytes.create io_buffer_size
+    ; pos= 0
+    ; max= 0 }
+
+  let decoder_from x =
+    let max = String.length x in
+    let buffer = Bytes.of_string x in
+    { buffer; pos= 0; max; }
+
   type error =
     | End_of_input
     | Expected_char of char
@@ -141,6 +153,16 @@ module Decoder = struct
     | No_enough_space
     | Invalid_code of int
     | Assert_predicate of (char -> bool)
+
+  let pp_error ppf = function
+    | End_of_input -> Fmt.string ppf "End_of_input"
+    | Expected_char chr -> Fmt.pf ppf "(Expected_char %02x)" (Char.code chr)
+    | Unexpected_char chr -> Fmt.pf ppf "(Unexpected_char %02x)" (Char.code chr)
+    | Expected_string s -> Fmt.pf ppf "(Expected_string %s)" s
+    | Expected_eol -> Fmt.string ppf "Expected_eol"
+    | No_enough_space -> Fmt.string ppf "No_enough_space"
+    | Invalid_code c -> Fmt.pf ppf "(Invalid_code %03d)" c
+    | Assert_predicate _ -> Fmt.string ppf "(Assert_predicate #predicate)"
 
   type 'v state =
     | Ok of 'v
@@ -285,4 +307,12 @@ module Decoder = struct
   let response decoder =
     let k v decoder = return v decoder in
     prompt (response k) decoder
+
+  let of_string x =
+    let decoder = decoder_from x in
+    let go x : (Reply.t, error) result = match x with
+      | Read _ -> Error End_of_input
+      | Error { error; _ } -> Error error
+      | Ok v -> Ok v in
+    go (response decoder)
 end
