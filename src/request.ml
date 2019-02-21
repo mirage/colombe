@@ -245,12 +245,22 @@ module Request = struct
 end
 
 module Decoder = struct
-  [@@@warning "-32-34-37"]
-
   type decoder =
     { buffer : Bytes.t
     ; mutable pos : int
     ; mutable max : int }
+
+  let io_buffer_size = 65536
+
+  let decoder () =
+    { buffer= Bytes.create io_buffer_size
+    ; pos= 0
+    ; max= 0 }
+
+  let decoder_from x =
+    let max = String.length x in
+    let buffer = Bytes.of_string x in
+    { buffer; pos= 0; max; }
 
   type error =
     | End_of_input
@@ -261,6 +271,16 @@ module Decoder = struct
     | Expected_eol
     | No_enough_space
     | Assert_predicate of (char -> bool)
+
+  let pp_error ppf = function
+    | End_of_input -> Fmt.string ppf "End_of_input"
+    | Expected_char chr -> Fmt.pf ppf "(Expected_char %02x)" (Char.code chr)
+    | Unexpected_char chr -> Fmt.pf ppf "(Unexpected_char %02x)" (Char.code chr)
+    | Expected_string s -> Fmt.pf ppf "(Expected_string %s)" s
+    | Invalid_command s -> Fmt.pf ppf "(Invalid_command %s)" s
+    | Expected_eol -> Fmt.string ppf "Expected_eol"
+    | No_enough_space -> Fmt.string ppf "No_enough_space"
+    | Assert_predicate _ -> Fmt.string ppf "(Assert_predicate #predicate)"
 
   type 'v state =
     | Ok of 'v
@@ -300,37 +320,6 @@ module Decoder = struct
       if not (Char.equal chr chr') then leave_with decoder (Expected_char chr) ;
       junk_char decoder
     | None -> leave_with decoder End_of_input
-
-  let satisfy predicate decoder =
-    match peek_char decoder with
-    | Some chr ->
-      if not (predicate chr) then leave_with decoder (Assert_predicate predicate) ;
-      junk_char decoder
-    | None -> leave_with decoder End_of_input
-
-  let space = fun decoder -> char ' ' decoder
-  let null = fun decoder -> char '\000' decoder
-
-  type sub = bytes * int * int
-
-  let while1 predicate decoder =
-    let idx = ref decoder.pos in
-    while !idx < end_of_input decoder
-          && predicate (Bytes.unsafe_get decoder.buffer !idx)
-    do incr idx done ;
-    if !idx - decoder.pos = 0
-    then leave_with decoder (Assert_predicate predicate) ;
-    let sub = decoder.buffer, decoder.pos, decoder.pos - !idx in
-    (* XXX(dinosaure): avoid sub-string operation. *)
-    decoder.pos <- !idx ; sub
-
-  let while0 predicate decoder =
-    let idx = ref decoder.pos in
-    while !idx < end_of_input decoder
-          && predicate (Bytes.unsafe_get decoder.buffer !idx)
-    do incr idx done ;
-    let sub = decoder.buffer, decoder.pos, decoder.pos - !idx in
-    decoder.pos <- !idx ; sub
 
   let string str decoder =
     let idx = ref 0 in
@@ -388,11 +377,6 @@ module Decoder = struct
     | exception Not_found ->
       let command = Bytes.sub_string decoder.buffer pos !len in
       leave_with decoder (Invalid_command command)
-
-  let safe_remove_crlf x =
-    let len = String.length x in
-    if len < 2 || x.[len - 1] <> '\n' || x.[len - 2] <> '\r' then Fmt.invalid_arg "Invalid input" ;
-    String.sub x 0 (len - 2)
 
   let hello decoder =
     char ' ' decoder ;
@@ -493,4 +477,12 @@ module Decoder = struct
     go decoder.max
 
   let request decoder = prompt request decoder
+
+  let of_string x =
+    let decoder = decoder_from x in
+    let go x : (Request.t, error) result = match x with
+      | Read _ -> Error End_of_input
+      | Error { error; _ } ->  Error error
+      | Ok v -> Ok v in
+    go (request decoder)
 end
