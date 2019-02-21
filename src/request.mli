@@ -57,6 +57,8 @@ module Decoder : sig
     | No_enough_space
     | Assert_predicate of (char -> bool)
 
+  val pp_error : error Fmt.t
+
   type 'v state =
     | Ok of 'v
     | Read of { buffer : bytes
@@ -68,5 +70,8 @@ module Decoder : sig
              ; buffer : bytes
              ; committed : int }
 
+  val decoder : unit -> decoder
+  val decoder_from : string -> decoder
   val request : decoder -> Request.t state
+  val of_string : string -> (Request.t, error) result
 end
