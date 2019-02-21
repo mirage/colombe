@@ -2,6 +2,7 @@
  (name colombe)
  (modules colombe
           request
-          reply)
+          reply
+          trie)
  (public_name colombe)
- (libraries fmt angstrom))
+ (libraries fmt ipaddr angstrom))

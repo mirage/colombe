@@ -1,2 +1,2 @@
-module Request = Request.Request
-module Reply = Reply.Reply
+module Request = Request
+module Reply = Reply
