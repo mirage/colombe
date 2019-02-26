@@ -44,6 +44,7 @@ module Reply: sig
 
   val pp : t Fmt.t
   val compare : t -> t -> int
+  val equal : t -> t -> bool
   val v : int -> string list -> t
 end
 
