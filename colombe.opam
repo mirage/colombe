@@ -1,7 +1,12 @@
 opam-version: "2.0"
 name:         "colombe"
 license:      "MIT"
-mainainer:    "Gwenaëlle Lecat"
+authors:      [ "Gwenaëlle Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
+maintainer:   [ "Gwenaëlle Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
+homepage:     "https://github.com/dinosaure/colombe"
+bug-reports:  "https://github.com/dinosaure/colombe/issues"
+dev-repo:     "git+https://github.com/dinosaure/colombe.git"
+synopsis:     "SMTP protocol in OCaml"
 description: """This package purpose is to provide an implementation of the
 RFC 5321 about SMTP standard in OCaml.
 """
