@@ -3,6 +3,9 @@
  (modules colombe
           request
           reply
-          trie)
+          domain
+          path
+          reverse_path
+          forward_path)
  (public_name colombe)
  (libraries fmt ipaddr angstrom))

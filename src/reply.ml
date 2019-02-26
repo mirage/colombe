@@ -42,6 +42,39 @@ module Reply = struct
     | permanent_neg_completion
     | `Other of int * string list ]
 
+  let equal_values a b =
+    try List.for_all2 String.equal a b
+    with _ -> false
+
+  let equal a b = match a, b with
+    | `PP_211 a, `PP_211 b -> equal_values a b
+    | `PP_214 a, `PP_214 b -> equal_values a b
+    | `PP_220 a, `PP_220 b -> equal_values a b
+    | `PP_221 a, `PP_221 b -> equal_values a b
+    | `PP_250 a, `PP_250 b -> equal_values a b
+    | `PP_251 a, `PP_251 b -> equal_values a b
+    | `PP_252 a, `PP_252 b -> equal_values a b
+    | `TP_354 a, `TP_354 b -> equal_values a b
+    | `TN_421 a, `TN_421 b -> equal_values a b
+    | `TN_450 a, `TN_450 b -> equal_values a b
+    | `TN_451 a, `TN_451 b -> equal_values a b
+    | `TN_452 a, `TN_452 b -> equal_values a b
+    | `TN_455 a, `TN_455 b -> equal_values a b
+    | `PN_500 a, `PN_500 b -> equal_values a b
+    | `PN_501 a, `PN_501 b -> equal_values a b
+    | `PN_502 a, `PN_502 b -> equal_values a b
+    | `PN_503 a, `PN_503 b -> equal_values a b
+    | `PN_504 a, `PN_504 b -> equal_values a b
+    | `PN_550 a, `PN_550 b -> equal_values a b
+    | `PN_551 a, `PN_551 b -> equal_values a b
+    | `PN_552 a, `PN_552 b -> equal_values a b
+    | `PN_553 a, `PN_553 b -> equal_values a b
+    | `PN_554 a, `PN_554 b -> equal_values a b
+    | `PN_555 a, `PN_555 b -> equal_values a b
+    | `Other (code_a, a), `Other (code_b, b) ->
+      code_a = code_b && equal_values a b
+    | _, _ -> false
+
   let pp ppf = function
     | `PP_211 lines -> Fmt.pf ppf "(211 @[<hov>%a@])" Fmt.(Dump.list string) lines
     | `PP_214 lines -> Fmt.pf ppf "(214 @[<hov>%a@])" Fmt.(Dump.list string) lines
@@ -203,7 +236,7 @@ module Decoder = struct
     do incr idx done ;
     if !idx - decoder.pos = 0
     then leave_with decoder (Assert_predicate predicate) ;
-    let sub = decoder.buffer, decoder.pos, decoder.pos - !idx in
+    let sub = decoder.buffer, decoder.pos, !idx - decoder.pos in
     (* XXX(dinosaure): avoid sub-string operation. *)
     decoder.pos <- !idx ; sub
 
@@ -216,30 +249,33 @@ module Decoder = struct
     let idx = ref 0 in
     let res = ref 0 in
     while !idx < len
-    do res := (!res * 10) + (unsafe_get_uint8 raw (off + !idx) - 48) ; incr idx done ;
-    !res
+    do res := (!res * 10) + (unsafe_get_uint8 raw (off + !idx) - 48) ; incr idx done ; !res
 
-  let take_while_eol decoder =
+  let peek_while_eol decoder =
     let idx = ref decoder.pos in
+    let chr = ref '\000' in
     let has_cr = ref false in
+
     while !idx < end_of_input decoder
-          && not (Char.equal '\n' (Bytes.unsafe_get decoder.buffer !idx) && !has_cr)
-    do has_cr := Char.equal '\r' (Bytes.unsafe_get decoder.buffer !idx) ; incr idx done ;
-    if !idx < end_of_input decoder
-    && Char.equal '\n' (Bytes.unsafe_get decoder.buffer !idx)
-    && !has_cr
-    then decoder.buffer, decoder.pos, !idx - decoder.pos
+          && ( chr := Bytes.unsafe_get decoder.buffer !idx
+             ; not (!chr == '\n' && !has_cr) )
+    do has_cr := !chr == '\r' ; incr idx done ;
+
+    if !idx < end_of_input decoder && !chr == '\n' && !has_cr
+    then ( assert (!idx + 1 - decoder.pos > 1) ; decoder.buffer, decoder.pos, !idx + 1 - decoder.pos )
     else leave_with decoder Expected_eol
 
   let at_least_one_line decoder =
     let pos = ref decoder.pos in
+    let chr = ref '\000' in
     let has_cr = ref false in
     while !pos < decoder.max
-          && not (Char.equal '\n' (Bytes.unsafe_get decoder.buffer !pos) && !has_cr)
-    do has_cr := Char.equal '\r' (Bytes.unsafe_get decoder.buffer !pos) ; incr pos done ;
-    (!pos < decoder.max
-     && Char.equal '\n' (Bytes.unsafe_get decoder.buffer !pos)
-     && !has_cr)
+          &&  ( chr := Bytes.unsafe_get decoder.buffer !pos
+              ; not (!chr = '\n' && !has_cr) )
+    do has_cr := !chr = '\r' ; incr pos done ;
+    !pos < decoder.max
+    && !chr = '\n'
+    && !has_cr
 
   (* XXX(dinosaure): [prompt] expects at least, one line. So we have a /loop/
      which fills [decoder.buffer] while we did not have CRLF inside
@@ -273,12 +309,13 @@ module Decoder = struct
       match peek_char decoder with
       | Some ' ' ->
         junk_char decoder ;
-        let raw_crlf, off, len = take_while_eol decoder in
+        let raw_crlf, off, len = peek_while_eol decoder in
         let reply = Reply.v code (List.rev (Bytes.sub_string raw_crlf off (len - 2) :: lines)) in
-        k reply decoder
+        decoder.pos <- decoder.pos + len ; k reply decoder
       | Some '-' ->
         junk_char decoder ;
-        let raw_crlf, off, len= take_while_eol decoder in
+        let raw_crlf, off, len= peek_while_eol decoder in
+        decoder.pos <- decoder.pos + len ;
         if end_of_input decoder = decoder.pos
         then prompt (go code lines) decoder
         else go code (Bytes.sub_string raw_crlf off (len - 2) :: lines) decoder
@@ -290,12 +327,13 @@ module Decoder = struct
     match peek_char decoder with
     | Some ' ' ->
       junk_char decoder ;
-      let raw_crlf, off, len = take_while_eol decoder in
+      let raw_crlf, off, len = peek_while_eol decoder in
       let reply = Reply.v code [ Bytes.sub_string raw_crlf off (len - 2) ] in
-      k reply decoder
+      decoder.pos <- decoder.pos + len ; k reply decoder
     | Some '-' ->
       junk_char decoder ;
-      let raw_crlf, off, len= take_while_eol decoder in
+      let raw_crlf, off, len = peek_while_eol decoder in
+      decoder.pos <- decoder.pos + len ;
       if end_of_input decoder = decoder.pos
       then prompt (go code [ Bytes.sub_string raw_crlf off (len - 2) ]) decoder
       else go code [ Bytes.sub_string raw_crlf off (len - 2) ] decoder
@@ -306,7 +344,9 @@ module Decoder = struct
 
   let response decoder =
     let k v decoder = return v decoder in
-    prompt (response k) decoder
+    if at_least_one_line decoder
+    then safe (response k) decoder
+    else prompt (response k) decoder
 
   let of_string x =
     let decoder = decoder_from x in
