@@ -21,6 +21,6 @@ depends: [
   "ocaml"      {>= "4.03.0"}
   "dune"       {build}
   "angstrom"
-  "ipaddr"     {>= "3.0.0"}
+  "ipaddr"     {>= "2.9.0"}
   "fmt"
 ]
