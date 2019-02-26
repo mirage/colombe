@@ -1,4 +1,4 @@
 (test
- (name test_colombe)
+ (name test)
  (package colombe)
- (libraries colombe))
+ (libraries colombe alcotest))
