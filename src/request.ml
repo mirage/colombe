@@ -1,214 +1,11 @@
-module Domain = struct
-  type t =
-    | IPv4 of Ipaddr.V4.t
-    | IPv6 of Ipaddr.V6.t
-    | Extension of string * string
-    | Domain of string list
+let () = Printexc.record_backtrace true
 
-  let pp ppf = function
-    | IPv4 ipv4 -> Ipaddr.V4.pp ppf ipv4
-    | IPv6 ipv6 -> Ipaddr.V6.pp ppf ipv6
-    | Extension (k, v) -> Fmt.pf ppf "%s:%s" k v
-    | Domain l -> Fmt.pf ppf "%a" Fmt.(list ~sep:(const string ".") string) l
-
-  open Angstrom
-
-  let ( or ) a b = fun x -> a x || b x
-  let is_alpha = function 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false
-  let is_digit = function '0' .. '9' -> true | _ -> false
-  let is_dash = (=) '-'
-
-  let let_dig = satisfy (is_alpha or is_digit)
-
-  let ldh_str =
-    take_while (is_alpha or is_digit or is_dash)
-    >>= fun pre -> let_dig
-    >>| fun lst -> String.concat "" [ pre ; String.make 1 lst ]
-
-  let sub_domain =
-    let_dig
-    >>= fun pre -> option "" ldh_str
-    >>| fun lst -> String.concat "" [ String.make 1 pre; lst ]
-
-  let domain =
-    sub_domain
-    >>= fun x -> many (char '.' *> sub_domain)
-    >>| fun r -> Domain (x :: r)
-
-  (* From Mr. MIME. *)
-
-  let is_dcontent = function
-    | '\033' .. '\090' | '\094' .. '\126' -> true
-    | _ -> false
-
-  let ipv4_address_literal =
-    Unsafe.take_while1 is_dcontent (fun buf ~off ~len ->
-        let raw = Bigstringaf.substring buf ~off ~len in
-        let pos = ref 0 in
-        try
-          let res = Ipaddr.V4.of_string_raw raw pos in
-          if !pos = len then Some res else None
-        with Ipaddr.Parse_error _ -> None )
-    >>= function Some v -> return v | None -> fail "ipv4_address_literal"
-
-  let ipv6_addr =
-    Unsafe.take_while1 is_dcontent (fun buf ~off ~len ->
-        let raw = Bigstringaf.substring buf ~off ~len in
-        let pos = ref 0 in
-        try
-          let res = Ipaddr.V6.of_string_raw raw pos in
-          if !pos = len then Some res else None
-        with Ipaddr.Parse_error _ -> None )
-    >>= function Some v -> return v | None -> fail "ipv6_addr"
-
-  let ipv6_address_literal = string "IPv6:" *> ipv6_addr
-
-  let failf fmt = Fmt.kstrf fail fmt
-
-  let ldh_str =
-    take_while1 (function
-        | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '-' -> true
-        | _ -> false )
-    >>= fun ldh ->
-    if String.unsafe_get ldh (String.length ldh - 1) = '-'
-    then failf "ldh_str: %s is invalid" ldh
-    else return ldh
-
-  let general_address_literal =
-    ldh_str <* char ':'
-    >>= fun ldh -> take_while1 is_dcontent
-    >>| fun value -> Extension (ldh, value)
-
-  let address_literal =
-    char '[' *>
-    (ipv4_address_literal >>| (fun v -> IPv4 v))
-    <|> (ipv6_address_literal >>| fun v -> IPv6 v)
-    <|> general_address_literal
-    <* char ']'
-
-  let of_string x =
-    match parse_string (domain <|> address_literal) x with
-    | Ok v -> v
-    | Error _ -> Fmt.invalid_arg "Invalid domain: %s" x
-end
-
-module Reverse_path = struct
-  open Angstrom
-
-  let at_domain = char '@' *> Domain.domain
-  let a_d_l = at_domain >>= fun x -> many (char ',' *> at_domain) >>| fun r -> x :: r
-
-  let is_atext = function
-    | 'a' .. 'z'
-    |'A' .. 'Z'
-    |'0' .. '9'
-    |'!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '/' | '=' | '?'
-    |'^' | '_' | '`' | '{' | '}' | '|' | '~' ->
-      true
-    | _ -> false
-
-  let is_qtextSMTP = function
-    | '\032' | '\033' | '\035' .. '\091' | '\093' .. '\126' -> true
-    | _ -> false
-
-  let atom = take_while1 is_atext
-
-  let dot_string = atom >>= fun x -> many (char '.' *> atom) >>| fun r -> `Dot_string (x :: r)
-
-  let quoted_pairSMTP =
-    char '\\' *> satisfy (function '\032' .. '\126' -> true | _ -> false) >>| String.make 1
-
-  let qcontentSMTP = quoted_pairSMTP <|> take_while1 is_qtextSMTP
-
-  let quoted_string =
-    char '"' *> many qcontentSMTP <* char '"' >>| String.concat "" >>| fun x -> `String x
-
-  let local_part = dot_string <|> quoted_string
-
-  let mailbox =
-    local_part
-    >>= fun local -> char '@' *> (Domain.domain <|> Domain.address_literal)
-    >>| fun domain -> (local, domain)
-
-  type path =
-    { local : [ `String of string | `Dot_string of string list ]
-    ; domain : Domain.t
-    ; rest : Domain.t list }
-  and t = path option
-
-  let pp_local ppf = function
-    | `String x -> Fmt.(quote string) ppf x
-    | `Dot_string l -> Fmt.(list ~sep:(const string ".") string) ppf l
-
-  let pp_path ppf { local; domain; rest; } =
-    match rest with
-    | [] -> Fmt.pf ppf "<%a@%a>" pp_local local Domain.pp domain
-    | rest ->
-      Fmt.pf ppf "<%a:%a@%a>"
-        Fmt.(list ~sep:(const string ",") (prefix (const string "@") Domain.pp)) rest
-        pp_local local Domain.pp domain
-
-  let pp = Fmt.option pp_path
-
-  let path =
-    char '<' *> option [] (a_d_l <* char ':')
-    >>= fun rest -> mailbox
-    >>| fun (local, domain) -> { local; domain; rest; }
-
-  let reverse_path = (path >>| fun t -> Some t) <|> (string "<>" *> return None)
-
-  let esmtp_keyword =
-    satisfy Domain.(is_alpha or is_digit)
-    >>= fun pre -> take_while Domain.(is_alpha or is_digit or is_dash)
-    >>| fun lst -> String.concat "" [ String.make 1 pre ; lst ]
-
-  let esmtp_value = take_while1 (function '\033' .. '\060' | '\062' .. '\126' -> true | _ -> false)
-
-  let esmtp_param =
-    esmtp_keyword
-    >>= fun key -> (option None (char '=' *> esmtp_value >>| fun x -> Some x))
-    >>| fun value -> (key, value)
-
-  let mail_parameters = esmtp_param >>= fun x -> many (char ' ' *> esmtp_param) >>| fun r -> x :: r
-
-  let of_string x =
-    let p =
-      reverse_path
-      >>= fun reverse_path -> option [] (char ' ' *> mail_parameters)
-      >>| fun parameters -> (reverse_path, parameters) in
-    match parse_string p x with
-    | Ok v -> v
-    | Error _ -> Fmt.invalid_arg "Invalid reverse-path: %s" x
-end
-
-module Forward_path = struct
-  open Angstrom
-
-  type t =
-    | Postmaster
-    | Domain of Domain.t
-    | Forward_path of forward_path
-  and forward_path = Reverse_path.path
-
-  let forward_path = Reverse_path.path
-  let mail_parameters = Reverse_path.mail_parameters
-
-  let pp ppf = function
-    | Postmaster -> Fmt.string ppf "<Postmaster>"
-    | Domain domain -> Fmt.pf ppf "<Postmaster@%a>" Domain.pp domain
-    | Forward_path path -> Reverse_path.pp_path ppf path
-
-  let of_string x =
-    let p =
-      (string "<Postmaster@" *> Domain.domain >>| fun domain -> Domain domain)
-      <|> (string "Postmaster>" *> return Postmaster)
-      <|> (forward_path >>| fun path -> Forward_path path) in
-    let p = p
-      >>= fun forward_path -> option [] (char ' ' *> mail_parameters)
-      >>| fun parameters -> (forward_path, parameters) in
-    match parse_string p x with
-    | Ok v -> v
-    | Error _ -> Fmt.invalid_arg "Invalid forward-path: %s" x
+module Option = struct
+  let equal eq a b =
+    match a, b with
+    | Some a, Some b -> eq a b
+    | None, None -> true
+    | _, _ -> false
 end
 
 module Request = struct
@@ -217,12 +14,40 @@ module Request = struct
     | `Mail of Reverse_path.t * (string * string option) list
     | `Recipient of Forward_path.t * (string * string option) list
     | `Expand of string
-    | `Data of string
+    | `Data
     | `Help of string option
     | `Noop of string option
     | `Verify of string
     | `Reset
     | `Quit ]
+
+  let equal_parameters a b =
+    let a = List.sort (fun (ka, _) (kb, _) -> String.compare ka kb) a in
+    let b = List.sort (fun (ka, _) (kb, _) -> String.compare ka kb) b in
+    let equal_values a b = match a, b with
+      | Some a, Some b -> String.equal a b
+      | None, None -> true
+      | _, _ -> false in
+    try
+      List.for_all2 (fun (ka, va) (kb, vb) -> String.equal ka kb && equal_values va vb)
+        a b
+    with _ -> false
+
+  let equal a b = match a, b with
+    | `Hello a, `Hello b -> Domain.equal a b
+    | `Mail (a, pa), `Mail (b, pb) ->
+      Reverse_path.equal a b && equal_parameters pa pb
+    | `Recipient (a, pa), `Recipient (b, pb) ->
+      Forward_path.equal a b && equal_parameters pa pb
+    | `Expand a, `Expand b -> String.equal a b
+    | `Data, `Data -> true
+    | `Help a, `Help b -> Option.equal String.equal a b
+    | `Noop a, `Noop b -> Option.equal String.equal a b
+    | `Verify a, `Verify b -> String.equal a b
+    | `Reset, `Reset -> true
+    | `Quit, `Quit -> true
+    | _, _ -> false
+
 
   let pp ppf = function
     | `Hello domain ->
@@ -236,7 +61,7 @@ module Request = struct
         Forward_path.pp forward_path
         Fmt.(Dump.list (pair string (option string))) parameters
     | `Expand data -> Fmt.pf ppf "(Expand %s)" data
-    | `Data data -> Fmt.pf ppf "(Data %s)" data
+    | `Data -> Fmt.string ppf "Data"
     | `Help data -> Fmt.pf ppf "(Help %a)" Fmt.(option string) data
     | `Noop data -> Fmt.pf ppf "(Noop %a)" Fmt.(option string) data
     | `Verify data -> Fmt.pf ppf "(Verify %s)" data
@@ -269,6 +94,7 @@ module Decoder = struct
     | Expected_string of string
     | Invalid_command of string
     | Expected_eol
+    | Expected_eol_or_space
     | No_enough_space
     | Assert_predicate of (char -> bool)
 
@@ -279,6 +105,7 @@ module Decoder = struct
     | Expected_string s -> Fmt.pf ppf "(Expected_string %s)" s
     | Invalid_command s -> Fmt.pf ppf "(Invalid_command %s)" s
     | Expected_eol -> Fmt.string ppf "Expected_eol"
+    | Expected_eol_or_space -> Fmt.string ppf "Expected_eol_or_space"
     | No_enough_space -> Fmt.string ppf "No_enough_space"
     | Assert_predicate _ -> Fmt.string ppf "(Assert_predicate #predicate)"
 
@@ -309,18 +136,6 @@ module Decoder = struct
   let leave_with (decoder : decoder) error =
     raise (Leave { error; buffer= decoder.buffer; committed= decoder.pos; })
 
-  let junk_char decoder =
-    if decoder.pos < end_of_input decoder
-    then decoder.pos <- decoder.pos + 1
-    else leave_with decoder End_of_input
-
-  let char chr decoder =
-    match peek_char decoder with
-    | Some chr' ->
-      if not (Char.equal chr chr') then leave_with decoder (Expected_char chr) ;
-      junk_char decoder
-    | None -> leave_with decoder End_of_input
-
   let string str decoder =
     let idx = ref 0 in
     let len = String.length str in
@@ -330,131 +145,131 @@ module Decoder = struct
             (Bytes.unsafe_get decoder.buffer (decoder.pos + !idx))
             (String.unsafe_get str !idx)
     do incr idx done ;
-    if !idx = len then () else leave_with decoder (Expected_string str)
+    if !idx = len then decoder.pos <- decoder.pos + len else leave_with decoder (Expected_string str)
 
   (* According to RFC 5321. *)
 
-  let trie = Trie.empty
-  let trie = Trie.add "EHLO" `Hello trie
-  let trie = Trie.add "HELO" `Hello trie
-  let trie = Trie.add "MAIL" `Mail trie
-  let trie = Trie.add "RCPT" `Recipient trie
-  let trie = Trie.add "DATA" `Data trie
-  let trie = Trie.add "RSET" `Reset trie
-  let trie = Trie.add "VRFY" `Verify trie
-  let trie = Trie.add "EXPN" `Expand trie
-  let trie = Trie.add "HELP" `Help trie
-  let trie = Trie.add "NOOP" `Noop trie
-  let trie = Trie.add "QUIT" `Quit trie
+  let trie = Hashtbl.create 16
+  let () = Hashtbl.add trie "EHLO" `Hello
+  let () = Hashtbl.add trie "HELO" `Hello
+  let () = Hashtbl.add trie "MAIL" `Mail
+  let () = Hashtbl.add trie "RCPT" `Recipient
+  let () = Hashtbl.add trie "DATA" `Data
+  let () = Hashtbl.add trie "RSET" `Reset
+  let () = Hashtbl.add trie "VRFY" `Verify
+  let () = Hashtbl.add trie "EXPN" `Expand
+  let () = Hashtbl.add trie "HELP" `Help
+  let () = Hashtbl.add trie "NOOP" `Noop
+  let () = Hashtbl.add trie "QUIT" `Quit
 
-  let take_while_eol decoder =
+  let peek_while_eol decoder =
     let idx = ref decoder.pos in
+    let chr = ref '\000' in
     let has_cr = ref false in
+
     while !idx < end_of_input decoder
-          && not (Char.equal '\n' (Bytes.unsafe_get decoder.buffer !idx) && !has_cr)
-    do has_cr := Char.equal '\r' (Bytes.unsafe_get decoder.buffer !idx) ; incr idx done ;
-    if !idx < end_of_input decoder
-    && Char.equal '\n' (Bytes.unsafe_get decoder.buffer !idx)
-    && !has_cr
-    then ( assert (!idx - decoder.pos >= 2) ; decoder.buffer, decoder.pos, !idx - decoder.pos )
+          && ( chr := Bytes.unsafe_get decoder.buffer !idx
+             ; not (!chr == '\n' && !has_cr) )
+    do has_cr := !chr == '\r' ; incr idx done ;
+
+    if !idx < end_of_input decoder && !chr == '\n' && !has_cr
+    then ( assert (!idx + 1 - decoder.pos > 1) ; decoder.buffer, decoder.pos, !idx + 1 - decoder.pos )
     else leave_with decoder Expected_eol
 
+  let peek_while_eol_or_space decoder =
+    let idx = ref decoder.pos in
+    let chr = ref '\000' in
+    let has_cr = ref false in
+
+    while !idx < end_of_input decoder
+          && ( chr := Bytes.unsafe_get decoder.buffer !idx
+             ; not (!chr = '\n' && !has_cr) && !chr <> ' ')
+    do has_cr := !chr = '\r' ; incr idx done ;
+
+    if !idx < end_of_input decoder && ((!chr = '\n' && !has_cr) || (!chr = ' '))
+    then ( decoder.buffer, decoder.pos, !idx + 1 - decoder.pos )
+    else leave_with decoder Expected_eol_or_space
+
   let command decoder =
-    let pos = decoder.pos in
-    let len = ref 0 in
-    let advance n =
-      let rec go rest =
-        if rest = 0 then Some (decoder.buffer, pos, !len)
-        else match peek_char decoder with
-          | Some _ ->
-            junk_char decoder ;
-            incr len ;
-            go (n - 1)
-          | None -> None in
-      if n <= 0 then None else go n in
-    match Trie.find advance trie with
-    | command -> command
+    let raw, off, len = peek_while_eol_or_space decoder in
+    let command = match Bytes.unsafe_get raw (off + len - 1) with
+      | ' ' -> Bytes.sub_string raw off (len - 1)
+      | '\n' -> Bytes.sub_string raw off (len - 2)
+      | _ -> assert false (* end with LF or SPACE *)in
+    match Hashtbl.find trie command with
+    | command ->
+      decoder.pos <- decoder.pos + len ; command
     | exception Not_found ->
-      let command = Bytes.sub_string decoder.buffer pos !len in
       leave_with decoder (Invalid_command command)
 
-  let hello decoder =
-    char ' ' decoder ;
-    let raw_crlf, off, len = take_while_eol decoder in
-    let domain = Domain.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
-    return (`Hello domain) decoder
+  let hello (decoder : decoder) =
+    let raw_crlf, off, len = peek_while_eol decoder in
+    Fmt.epr "Argument: %s.\n%!" (Bytes.sub_string raw_crlf off (len - 2)) ;
+    let domain = Domain.Parser.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
+    decoder.pos <- decoder.pos + len ; return (`Hello domain) decoder
 
   let mail decoder =
-    let raw_crlf, off, len = take_while_eol decoder in
-    let reverse_path = Reverse_path.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
-    return (`Mail reverse_path) decoder
+    let raw_crlf, off, len = peek_while_eol decoder in
+    let reverse_path =
+      Reverse_path.Parser.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
+    decoder.pos <- decoder.pos + len ; return (`Mail reverse_path) decoder
 
   let recipient decoder =
-    let raw_crlf, off, len = take_while_eol decoder in
-    let forward_path = Forward_path.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
-    return (`Recipient forward_path) decoder
-
-  let data decoder =
-    let raw_crlf, off, len = take_while_eol decoder in
-    let data = Bytes.sub_string raw_crlf off (len - 2) in
-    return (`Data data) decoder
-
-  let crlf = fun decoder -> string "\r\n" decoder
+    let raw_crlf, off, len = peek_while_eol decoder in
+    let forward_path =
+      Forward_path.Parser.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
+    decoder.pos <- decoder.pos + len ; return (`Recipient forward_path) decoder
 
   let help decoder =
     match peek_char decoder with
-    | Some ' ' ->
-      junk_char decoder ;
-      let raw_crlf, off, len = take_while_eol decoder in
+    | Some _ ->
+      let raw_crlf, off, len = peek_while_eol decoder in
       let v = `Help (Some (Bytes.sub_string raw_crlf off (len - 2))) in
-      return v decoder
-    | Some chr -> leave_with decoder (Unexpected_char chr)
+      decoder.pos <- decoder.pos + len ; return v decoder
     | None -> return (`Help None) decoder
 
   let noop decoder =
     match peek_char decoder with
-    | Some ' ' ->
-      junk_char decoder ;
-      let raw_crlf, off, len = take_while_eol decoder in
+    | Some _ ->
+      let raw_crlf, off, len = peek_while_eol decoder in
       let v = `Noop (Some (Bytes.sub_string raw_crlf off (len - 2))) in
-      return v decoder
-    | Some chr -> leave_with decoder (Unexpected_char chr)
+      decoder.pos <- decoder.pos + len ; return v decoder
     | None -> return (`Noop None) decoder
 
   let request decoder =
     match command decoder with
     | `Hello -> hello decoder
     | `Mail ->
-      string " FROM:" decoder ;
+      string "FROM:" decoder ;
       mail decoder
     | `Recipient ->
-      string " TO:" decoder ;
+      string "TO:" decoder ;
       recipient decoder
-    | `Data -> data decoder
-    | `Reset -> crlf decoder ; return `Reset decoder
+    | `Data -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data decoder
+    | `Reset -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Reset decoder
     | `Verify ->
-      char ' ' decoder ;
-      let raw_crlf, off, len = take_while_eol decoder in
+      let raw_crlf, off, len = peek_while_eol decoder in
       let v = `Verify (Bytes.sub_string raw_crlf off (len - 2)) in
-      return v decoder
+      decoder.pos <- decoder.pos + len ; return v decoder
     | `Expand ->
-      char ' ' decoder ;
-      let raw_crlf, off, len = take_while_eol decoder in
+      let raw_crlf, off, len = peek_while_eol decoder in
       let v = `Expand (Bytes.sub_string raw_crlf off (len - 2)) in
-      return v decoder
+      decoder.pos <- decoder.pos + len ; return v decoder
     | `Help -> help decoder
     | `Noop -> noop decoder
-    | `Quit -> crlf decoder ; return `Quit decoder
+    | `Quit -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Quit decoder
 
   let at_least_one_line decoder =
     let pos = ref decoder.pos in
+    let chr = ref '\000' in
     let has_cr = ref false in
     while !pos < decoder.max
-          && not (Char.equal '\n' (Bytes.unsafe_get decoder.buffer !pos) && !has_cr)
-    do has_cr := Char.equal '\r' (Bytes.unsafe_get decoder.buffer !pos) ; incr pos done ;
-    (!pos < decoder.max
-     && Char.equal '\n' (Bytes.unsafe_get decoder.buffer !pos)
-     && !has_cr)
+          &&  ( chr := Bytes.unsafe_get decoder.buffer !pos
+              ; not (!chr = '\n' && !has_cr) )
+    do has_cr := !chr = '\r' ; incr pos done ;
+    !pos < decoder.max
+    && !chr = '\n'
+    && !has_cr
 
   let prompt k decoder =
     if decoder.pos > 0
@@ -476,7 +291,10 @@ module Decoder = struct
           safe k decoder ) in
     go decoder.max
 
-  let request decoder = prompt request decoder
+  let request decoder =
+    if at_least_one_line decoder
+    then safe request decoder
+    else prompt request decoder
 
   let of_string x =
     let decoder = decoder_from x in
