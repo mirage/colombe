@@ -22,5 +22,6 @@ depends: [
   "dune"       {build}
   "angstrom"
   "ipaddr"     {>= "2.9.0"}
+  "alcotest"   {with-test}
   "fmt"
 ]
