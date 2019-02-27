@@ -10,47 +10,7 @@ let pp = Fmt.option Path.pp
 module Parser = struct
   open Angstrom
 
-  let at_domain = char '@' *> Domain.Parser.domain
-  let a_d_l = at_domain >>= fun x -> many (char ',' *> at_domain) >>| fun r -> x :: r
-
-  let is_atext = function
-    | 'a' .. 'z'
-    |'A' .. 'Z'
-    |'0' .. '9'
-    |'!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '/' | '=' | '?'
-    |'^' | '_' | '`' | '{' | '}' | '|' | '~' ->
-      true
-    | _ -> false
-
-  let is_qtextSMTP = function
-    | '\032' | '\033' | '\035' .. '\091' | '\093' .. '\126' -> true
-    | _ -> false
-
-  let atom = take_while1 is_atext
-
-  let dot_string = atom >>= fun x -> many (char '.' *> atom) >>| fun r -> `Dot_string (x :: r)
-
-  let quoted_pairSMTP =
-    char '\\' *> satisfy (function '\032' .. '\126' -> true | _ -> false) >>| String.make 1
-
-  let qcontentSMTP = quoted_pairSMTP <|> take_while1 is_qtextSMTP
-
-  let quoted_string =
-    char '"' *> many qcontentSMTP <* char '"' >>| String.concat "" >>| fun x -> `String x
-
-  let local_part = dot_string <|> quoted_string
-
-  let mailbox =
-    local_part
-    >>= fun local -> char '@' *> (Domain.Parser.domain <|> Domain.Parser.address_literal)
-    >>| fun domain -> (local, domain)
-
-  let path =
-    char '<' *> option [] (a_d_l <* char ':')
-    >>= fun rest -> mailbox
-    >>| fun (local, domain) -> { Path.local; domain; rest; }
-
-  let reverse_path = (path >>| fun t -> Some t) <|> (string "<>" *> return None)
+  let reverse_path = (Path.Parser.path >>| fun t -> Some t) <|> (string "<>" *> return None)
 
   let esmtp_keyword =
     satisfy Domain.Parser.(is_alpha or is_digit)
@@ -76,3 +36,8 @@ module Parser = struct
     | Error _ -> Fmt.invalid_arg "Invalid reverse-path: %s" x
 end
 
+module Encoder = struct
+  let to_string = function
+    | None -> "<>"
+    | Some path -> Path.Encoder.to_string path
+end
