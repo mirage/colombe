@@ -75,3 +75,23 @@ module Decoder : sig
   val response : decoder -> Reply.t state
   val of_string : string -> (Reply.t, error) result
 end
+
+module Encoder : sig
+  type encoder
+
+  type error = No_enough_space
+
+  val pp_error : error Fmt.t
+
+  type state =
+    | Write of { buffer : Bytes.t
+               ; off : int
+               ; len : int
+               ; continue : int -> state }
+    | Error of error
+    | Ok
+
+  val encoder : unit -> encoder
+  val response : Reply.t -> encoder -> state
+  val to_string : Reply.t -> (string, error) result
+end
