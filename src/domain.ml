@@ -106,6 +106,17 @@ module Parser = struct
     | Error _ -> Fmt.invalid_arg "Invalid domain: %s" x
 end
 
+module Encoder = struct
+  (* XXX(dinosaure): use [Fmt] was not the best idea when we will use
+     [to_string] on the protocol. *)
+
+  let to_string = function
+    | IPv4 ipv4 -> Fmt.strf "[%s]" (Ipaddr.V4.to_string ipv4)
+    | IPv6 ipv6 -> Fmt.strf "[IPv6:%s]" (Ipaddr.V6.to_string ipv6)
+    | Extension (k, v) -> Fmt.strf "[%s:%s]" k v
+    | Domain l -> Fmt.strf "%a" Fmt.(list ~sep:(const string ".") string) l
+end
+
 exception Break
 
 let satisfy predicate x =

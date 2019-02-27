@@ -128,7 +128,7 @@ module Decoder = struct
     if decoder.pos < end_of_input decoder
     then Some (Bytes.unsafe_get decoder.buffer decoder.pos)
     else None
-    (* XXX(dinosaure): in [agnstrom] world, [peek_char] should try to read input
+    (* XXX(dinosaure): in [angstrom] world, [peek_char] should try to read input
        again. However, SMTP is a line-directed protocol where we can ensure to
        have the full line at the top (with a queue) instead to have a
        systematic check (which slow-down the process). *)
@@ -204,7 +204,6 @@ module Decoder = struct
 
   let hello (decoder : decoder) =
     let raw_crlf, off, len = peek_while_eol decoder in
-    Fmt.epr "Argument: %s.\n%!" (Bytes.sub_string raw_crlf off (len - 2)) ;
     let domain = Domain.Parser.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
     decoder.pos <- decoder.pos + len ; return (`Hello domain) decoder
 
@@ -303,4 +302,163 @@ module Decoder = struct
       | Error { error; _ } ->  Error error
       | Ok v -> Ok v in
     go (request decoder)
+end
+
+module Encoder = struct
+  type encoder =
+    { payload : Bytes.t
+    ; mutable pos : int }
+
+  type error = No_enough_space
+
+  let pp_error ppf No_enough_space = Fmt.string ppf "No_enough_space"
+
+  type state =
+    | Write of { buffer : Bytes.t
+               ; off : int
+               ; len : int
+               ; continue : int -> state }
+    | Error of error
+    | Ok
+
+  let io_buffer_size = 65536
+
+  let encoder () =
+    { payload= Bytes.create io_buffer_size
+    ; pos= 0 }
+
+  exception Leave of error
+
+  let leave_with (_ : encoder) error =
+    raise (Leave error)
+
+  let safe k encoder : state =
+    try k encoder with Leave error -> Error error
+
+  let flush k0 encoder =
+    if encoder.pos > 0
+    then
+      let rec k1 n =
+        if n < encoder.pos
+        then Write { buffer= encoder.payload
+                   ; off= n
+                   ; len= encoder.pos - n
+                   ; continue= (fun m -> k1 (n + m)) }
+        else ( encoder.pos <- 0 ; k0 encoder ) in
+      k1 0
+    else k0 encoder
+
+  let write s encoder =
+    let max = Bytes.length encoder.payload in
+    let go j l encoder =
+      let rem = max - encoder.pos in
+      let len = if l > rem then rem else l in
+      Bytes.blit_string s j encoder.payload encoder.pos len ;
+      encoder.pos <- encoder.pos + len ;
+      if len < l then leave_with encoder No_enough_space in
+    (* XXX(dinosaure): should never appear, but avoid continuation allocation. *)
+    go 0 (String.length s) encoder
+
+  let crlf encoder = write "\r\n" encoder
+
+  let hello domain encoder =
+    write "EHLO" encoder ; (* TODO: can write HELO. *)
+    write " " encoder ;
+    write (Domain.Encoder.to_string domain) encoder ;
+    crlf encoder
+
+  let write_parameters parameters encoder =
+    let rec go = function
+      | [] -> ()
+      | (k, Some v) :: r ->
+        write " " encoder ;
+        write k encoder ;
+        write "=" encoder ;
+        write v encoder ;
+        go r
+      | (k, None) :: r ->
+        write " " encoder ;
+        write k encoder ;
+        go r in
+    go parameters
+
+  let mail reverse_path parameters encoder =
+    write "MAIL FROM:" encoder ;
+    write (Reverse_path.Encoder.to_string reverse_path) encoder ;
+    match parameters with
+    | [] -> crlf encoder
+    | parameters ->
+      write_parameters parameters encoder ; crlf encoder
+
+  let recipient forward_path parameters encoder =
+    write "RCPT TO:" encoder ;
+    write (Forward_path.Encoder.to_string forward_path) encoder ;
+    match parameters with
+    | [] -> crlf encoder
+    | parameters ->
+      write_parameters parameters encoder ; crlf encoder
+
+  let verify argument encoder =
+    write "VRFY " encoder ;
+    write argument encoder ;
+    crlf encoder
+
+  let expand argument encoder =
+    write "EXPD " encoder ;
+    write argument encoder ;
+    crlf encoder
+
+  let help argument encoder =
+    write "HELP" encoder ;
+    match argument with
+    | Some argument ->
+      write " " encoder ;
+      write argument encoder ;
+      crlf encoder
+    | None -> crlf encoder
+
+  let noop argument encoder =
+    write "NOOP" encoder ;
+    match argument with
+    | Some argument ->
+      write " " encoder ;
+      write argument encoder ;
+      crlf encoder
+    | None -> crlf encoder
+
+  let request command encoder =
+    match command with
+    | `Hello domain -> hello domain encoder
+    | `Mail (reverse_path, parameters) ->
+      mail reverse_path parameters encoder
+    | `Recipient (forward_path, parameters) ->
+      recipient forward_path parameters encoder
+    | `Data -> write "DATA" encoder ; crlf encoder
+    | `Reset -> write "RSET" encoder ; crlf encoder
+    | `Verify argument ->
+      verify argument encoder
+    | `Expand argument ->
+      expand argument encoder
+    | `Help argument ->
+      help argument encoder
+    | `Noop argument ->
+      noop argument encoder
+    | `Quit -> write "QUIT" encoder ; crlf encoder
+
+  let request command encoder =
+    let k encoder = request command encoder ; Ok in
+    match safe k encoder with
+    | Write _ -> assert false (* XXX(dinosaure): request never calls [flush]. *)
+    | v -> flush (fun _ -> v) encoder
+
+  let to_string x =
+    let encoder = encoder () in
+    let res = Buffer.create 16 in
+    let rec go x : (string, error) result = match x with
+      | Write { buffer; off; len; continue } ->
+        Buffer.add_subbytes res buffer off len ;
+        go (continue len)
+      | Error error -> Error error
+      | Ok -> Ok (Buffer.contents res) in
+    go (request x encoder)
 end

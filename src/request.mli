@@ -48,3 +48,23 @@ module Decoder : sig
   val request : decoder -> Request.t state
   val of_string : string -> (Request.t, error) result
 end
+
+module Encoder : sig
+  type encoder
+
+  type error = No_enough_space
+
+  val pp_error : error Fmt.t
+
+  type state =
+    | Write of { buffer : Bytes.t
+               ; off : int
+               ; len : int
+               ; continue : int -> state }
+    | Error of error
+    | Ok
+
+  val encoder : unit -> encoder
+  val request : Request.t -> encoder -> state
+  val to_string : Request.t -> (string, error) result
+end

@@ -141,7 +141,7 @@ let results =
 let request =
   Alcotest.testable Request.Request.pp Request.Request.equal
 
-let test_requests () =
+let test_requests_0 () =
   let make (raw, expected) =
     Alcotest.test_case (String.sub raw 0 (String.length raw - 2)) `Quick @@ fun () ->
     match Request.Decoder.of_string raw with
@@ -149,6 +149,15 @@ let test_requests () =
     | Error err -> Alcotest.failf "%a." Request.Decoder.pp_error err
   in
   List.map make (List.combine requests results)
+
+let test_requests_1 () =
+  let make (value, raw) =
+    Alcotest.test_case (Fmt.to_to_string Request.Request.pp value) `Quick @@ fun () ->
+    match Request.Encoder.to_string value with
+    | Ok result -> Alcotest.(check string) (Fmt.to_to_string Request.Request.pp value) raw result
+    | Error err -> Alcotest.failf "%a." Request.Encoder.pp_error err
+  in
+  List.map make (List.combine results requests)
 
 let replies =
   [ "220 foo.com Simple Mail Transfer Service Ready\r\n"
@@ -271,5 +280,6 @@ let test_replies () =
 
 let () =
   Alcotest.run "colombe"
-    [ "requests", test_requests ()
+    [ "requests", test_requests_0 ()
+    ; "requests", test_requests_1 ()
     ; "replies", test_replies () ]
