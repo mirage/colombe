@@ -17,7 +17,7 @@ let pp ppf = function
 module Parser = struct
   open Angstrom
 
-  let forward_path = Reverse_path.Parser.path
+  let forward_path = Path.Parser.path
   let mail_parameters = Reverse_path.Parser.mail_parameters
 
   let of_string x =
@@ -33,3 +33,9 @@ module Parser = struct
     | Error _ -> Fmt.invalid_arg "Invalid forward-path: %s" x
 end
 
+module Encoder = struct
+  let to_string = function
+    | Postmaster -> "<Postmaster>"
+    | Domain domain -> Fmt.strf "<Postmaster@%s>" (Domain.Encoder.to_string domain)
+    | Forward_path path -> Path.Encoder.to_string path
+end
