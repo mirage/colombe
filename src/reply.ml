@@ -129,6 +129,35 @@ module Reply = struct
     | `PN_555 _ -> 555
     | `Other (code, _) -> code
 
+  let code x = to_int x
+
+  let lines = function
+    | `PP_211 lines
+    | `PP_214 lines
+    | `PP_220 lines
+    | `PP_221 lines
+    | `PP_250 lines
+    | `PP_251 lines
+    | `PP_252 lines
+    | `TP_354 lines
+    | `TN_421 lines
+    | `TN_450 lines
+    | `TN_451 lines
+    | `TN_452 lines
+    | `TN_455 lines
+    | `PN_500 lines
+    | `PN_501 lines
+    | `PN_502 lines
+    | `PN_503 lines
+    | `PN_504 lines
+    | `PN_550 lines
+    | `PN_551 lines
+    | `PN_552 lines
+    | `PN_553 lines
+    | `PN_554 lines
+    | `PN_555 lines
+    | `Other (_, lines) -> lines
+
   let compare a b = (to_int a) - (to_int b)
 
   let v code lines = match code with
@@ -355,4 +384,112 @@ module Decoder = struct
       | Error { error; _ } -> Error error
       | Ok v -> Ok v in
     go (response decoder)
+end
+
+module Encoder = struct
+  type encoder =
+    { payload : Bytes.t
+    ; mutable pos : int }
+
+  type error = No_enough_space
+
+  let pp_error ppf No_enough_space = Fmt.string ppf "No_enough_space"
+
+  type state =
+    | Write of { buffer : Bytes.t
+               ; off : int
+               ; len : int
+               ; continue : int -> state }
+    | Error of error
+    | Ok
+
+  let io_buffer_size = 65536
+
+  let encoder () =
+    { payload= Bytes.create io_buffer_size
+    ; pos= 0 }
+
+  exception Leave of error
+
+  let leave_with (_ : encoder) error =
+    raise (Leave error)
+
+  let safe k encoder : state =
+    try k encoder with Leave error -> Error error
+
+  let flush k0 encoder =
+    if encoder.pos > 0
+    then
+      let rec k1 n =
+        if n < encoder.pos
+        then Write { buffer= encoder.payload
+                   ; off= n
+                   ; len= encoder.pos - n
+                   ; continue= (fun m -> k1 (n + m)) }
+        else ( encoder.pos <- 0 ; k0 encoder ) in
+      k1 0
+    else k0 encoder
+
+  let write s encoder =
+    let max = Bytes.length encoder.payload in
+    let go j l encoder =
+      let rem = max - encoder.pos in
+      let len = if l > rem then rem else l in
+      Bytes.blit_string s j encoder.payload encoder.pos len ;
+      encoder.pos <- encoder.pos + len ;
+      if len < l then leave_with encoder No_enough_space in
+    (* XXX(dinosaure): should never appear, but avoid continuation allocation. *)
+    go 0 (String.length s) encoder
+
+  let crlf encoder = write "\r\n" encoder
+
+  let write_number n encoder =
+    write Fmt.(to_to_string int n) encoder
+
+  let response response k encoder =
+    match Reply.lines response with
+    | [] -> Fmt.invalid_arg "Reply.Encoder.response: response can not be empty"
+    | [ x ] ->
+      write_number (Reply.code response) encoder ;
+      write " " encoder ;
+      write x encoder ;
+      crlf encoder ;
+      flush k encoder
+    | x :: r ->
+      let code = Reply.code response in
+      write_number code encoder ;
+      write "-" encoder ;
+      write x encoder ;
+      crlf encoder ;
+
+      let rec go l k encoder = match l with
+        | [] -> assert false (* XXX(dinosaure): impossible case. *)
+        | [ x ] ->
+          write_number code encoder ;
+          write " " encoder ;
+          write x encoder ;
+          crlf encoder ;
+          flush k encoder
+        | x :: r ->
+          write_number code encoder ;
+          write "-" encoder ;
+          write x encoder ;
+          crlf encoder ;
+          flush (safe (go r k)) encoder in
+      flush (safe (go r k)) encoder
+
+  let response x encoder =
+    let k _ = Ok in
+    flush (safe (response x k)) encoder
+
+  let to_string x =
+    let encoder = encoder () in
+    let res = Buffer.create 16 in
+    let rec go x : (string, error) result = match x with
+      | Write { buffer; off; len; continue } ->
+        Buffer.add_subbytes res buffer off len ;
+        go (continue len)
+      | Error error -> Error error
+      | Ok -> Ok (Buffer.contents res) in
+    go (response x encoder)
 end
