@@ -260,7 +260,7 @@ let results =
 
 let reply = Alcotest.testable Reply.Reply.pp Reply.Reply.equal
 
-let test_replies () =
+let test_replies_0 () =
   let get_first_line raw =
     let chr = ref '\000' in
     let idx = ref 0 in
@@ -278,8 +278,18 @@ let test_replies () =
   in
   List.map make (List.combine replies results)
 
+let test_replies_1 () =
+  let make (value, raw) =
+    Alcotest.test_case (Fmt.to_to_string Reply.Reply.pp value) `Quick @@ fun () ->
+    match Reply.Encoder.to_string value with
+    | Ok result -> Alcotest.(check string) (Fmt.to_to_string Reply.Reply.pp value) raw result
+    | Error err -> Alcotest.failf "%a." Reply.Encoder.pp_error err
+  in
+  List.map make (List.combine results replies)
+
 let () =
   Alcotest.run "colombe"
     [ "requests", test_requests_0 ()
     ; "requests", test_requests_1 ()
-    ; "replies", test_replies () ]
+    ; "replies", test_replies_0 ()
+    ; "replies", test_replies_1 () ]
