@@ -1,0 +1,8 @@
+(executable
+ (name fuzz)
+ (libraries colombe crowbar fmt))
+
+(alias
+ (name runtest)
+ (deps (:fuzz fuzz.exe))
+ (action (run %{fuzz})))

@@ -70,8 +70,8 @@ module Parser = struct
 
   let path =
     char '<' *> option [] (a_d_l <* char ':')
-    >>= fun rest -> mailbox
-    >>| fun (local, domain) -> { local; domain; rest; }
+    >>= fun rest -> mailbox <* char '>'
+    >>= fun (local, domain) -> return { local; domain; rest; }
 end
 
 module Encoder = struct
