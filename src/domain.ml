@@ -95,9 +95,9 @@ module Parser = struct
 
   let address_literal =
     char '[' *>
-    (ipv4_address_literal >>| (fun v -> IPv4 v))
-    <|> (ipv6_address_literal >>| fun v -> IPv6 v)
-    <|> general_address_literal
+    ((ipv4_address_literal >>| (fun v -> IPv4 v))
+     <|> (ipv6_address_literal >>| fun v -> IPv6 v)
+     <|> general_address_literal)
     <* char ']'
 
   let of_string x =

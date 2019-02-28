@@ -404,7 +404,7 @@ module Encoder = struct
     crlf encoder
 
   let expand argument encoder =
-    write "EXPD " encoder ;
+    write "EXPN " encoder ;
     write argument encoder ;
     crlf encoder
 
