@@ -384,6 +384,14 @@ module Decoder = struct
       | Error { error; _ } -> Error error
       | Ok v -> Ok v in
     go (response decoder)
+
+  let of_string_raw x r =
+    let decoder = decoder_from x in
+    let go x : (Reply.t, error) result = match x with
+      | Read _ -> Error End_of_input
+      | Error { error; _ } -> Error error
+      | Ok v -> r := decoder.pos ; Ok v in
+    go (response decoder)
 end
 
 module Encoder = struct

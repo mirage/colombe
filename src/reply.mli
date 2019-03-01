@@ -74,6 +74,7 @@ module Decoder : sig
 
   val response : decoder -> Reply.t state
   val of_string : string -> (Reply.t, error) result
+  val of_string_raw : string -> int ref -> (Reply.t, error) result
 end
 
 module Encoder : sig

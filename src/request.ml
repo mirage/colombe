@@ -48,7 +48,6 @@ module Request = struct
     | `Quit, `Quit -> true
     | _, _ -> false
 
-
   let pp ppf = function
     | `Hello domain ->
       Fmt.pf ppf "(Hello @[<hov>%a@])" Domain.pp domain
@@ -301,6 +300,14 @@ module Decoder = struct
       | Read _ -> Error End_of_input
       | Error { error; _ } ->  Error error
       | Ok v -> Ok v in
+    go (request decoder)
+
+  let of_string_raw x r =
+    let decoder = decoder_from x in
+    let go x : (Request.t, error) result = match x with
+      | Read _ -> Error End_of_input
+      | Error { error; _ } ->  Error error
+      | Ok v -> r := decoder.pos ; Ok v in
     go (request decoder)
 end
 
