@@ -47,6 +47,7 @@ module Decoder : sig
   val decoder_from : string -> decoder
   val request : decoder -> Request.t state
   val of_string : string -> (Request.t, error) result
+  val of_string_raw : string -> int ref -> (Request.t, error) result
 end
 
 module Encoder : sig

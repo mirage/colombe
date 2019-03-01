@@ -129,37 +129,39 @@ let pp_scalar : type buffer.
 let pp_string = pp_scalar ~get:String.get ~length:String.length
 
 let never_raise0 () =
-  add_test ~name:"never raise" [ bytes ] @@ fun input ->
+  add_test ~name:"never raise (request)" [ bytes ] @@ fun input ->
   match Colombe.Request.Decoder.of_string input with
   | Ok _ | Error _ -> ()
   | exception exn -> failf "Got %s." (Printexc.to_string exn)
 
 let never_raise1 () =
-  add_test ~name:"never raise" [ bytes ] @@ fun input ->
+  add_test ~name:"never raise (reply)" [ bytes ] @@ fun input ->
   match Colombe.Reply.Decoder.of_string input with
   | Ok _ | Error _ -> ()
   | exception exn -> failf "Got %s." (Printexc.to_string exn)
 
 let iso0_request () =
-  add_test ~name:"x = encoder(decoder(x))" [ bytes ] @@ fun input ->
-  match Colombe.Request.Decoder.of_string input with
+  add_test ~name:"x = encoder(decoder(x)) (request)" [ bytes ] @@ fun input ->
+  let pos = ref 0 in
+  match Colombe.Request.Decoder.of_string_raw input pos with
   | Error _ -> ()
   | Ok v ->
     match Colombe.Request.Encoder.to_string v with
-    | Ok raw -> check_eq ~pp:pp_string ~eq:String.equal ~cmp:String.compare input raw
+    | Ok raw -> check_eq ~pp:pp_string ~eq:String.equal ~cmp:String.compare raw (String.sub input 0 !pos)
     | Error err -> failf "Got an error: %a." Colombe.Request.Encoder.pp_error err
 
 let iso0_reply () =
-  add_test ~name:"x = encoder(decoder(x))" [ bytes ] @@ fun input ->
-  match Colombe.Reply.Decoder.of_string input with
+  add_test ~name:"x = encoder(decoder(x)) (reply)" [ bytes ] @@ fun input ->
+  let pos = ref 0 in
+  match Colombe.Reply.Decoder.of_string_raw input pos with
   | Error _ -> ()
   | Ok v ->
     match Colombe.Reply.Encoder.to_string v with
-    | Ok raw -> check_eq ~pp:pp_string ~eq:String.equal ~cmp:String.compare input raw
+    | Ok raw -> check_eq ~pp:pp_string ~eq:String.equal ~cmp:String.compare raw (String.sub input 0 !pos)
     | Error err -> failf "Got an error: %a." Colombe.Reply.Encoder.pp_error err
 
 let iso1_request () =
-  add_test ~name:"x = decoder(encoder(x))" [ command ] @@ fun v ->
+  add_test ~name:"x = decoder(encoder(x)) (request)" [ command ] @@ fun v ->
   match Colombe.Request.Encoder.to_string v with
   | Error err -> failf "Got an error while encoding: %a." Colombe.Request.Encoder.pp_error err
   | Ok raw ->
@@ -168,7 +170,7 @@ let iso1_request () =
     | Error err -> failf "Got an error while decoding: %a." Colombe.Request.Decoder.pp_error err
 
 let iso1_reply () =
-  add_test ~name:"x = decoder(encoder(x))" [ response ] @@ fun v ->
+  add_test ~name:"x = decoder(encoder(x)) (reply)" [ response ] @@ fun v ->
   match Colombe.Reply.Encoder.to_string v with
   | Error err -> failf "Got an error while encoding: %a." Colombe.Reply.Encoder.pp_error err
   | Ok raw ->
