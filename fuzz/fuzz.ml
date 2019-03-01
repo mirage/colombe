@@ -92,6 +92,11 @@ let command =
          ; const `Reset
          ; const `Quit ]
 
+let code = range ~min:200 600
+let line = everything_expect_crlf
+
+let response = map [ code; list1 line ] @@ Colombe.Reply.Reply.v
+
 let failf fmt = Fmt.kstrf fail fmt
 
 let pp_chr =
@@ -123,13 +128,19 @@ let pp_scalar : type buffer.
 
 let pp_string = pp_scalar ~get:String.get ~length:String.length
 
-let never_raise () =
+let never_raise0 () =
   add_test ~name:"never raise" [ bytes ] @@ fun input ->
   match Colombe.Request.Decoder.of_string input with
   | Ok _ | Error _ -> ()
   | exception exn -> failf "Got %s." (Printexc.to_string exn)
 
-let iso0 () =
+let never_raise1 () =
+  add_test ~name:"never raise" [ bytes ] @@ fun input ->
+  match Colombe.Reply.Decoder.of_string input with
+  | Ok _ | Error _ -> ()
+  | exception exn -> failf "Got %s." (Printexc.to_string exn)
+
+let iso0_request () =
   add_test ~name:"x = encoder(decoder(x))" [ bytes ] @@ fun input ->
   match Colombe.Request.Decoder.of_string input with
   | Error _ -> ()
@@ -138,16 +149,37 @@ let iso0 () =
     | Ok raw -> check_eq ~pp:pp_string ~eq:String.equal ~cmp:String.compare input raw
     | Error err -> failf "Got an error: %a." Colombe.Request.Encoder.pp_error err
 
-let iso1 () =
+let iso0_reply () =
+  add_test ~name:"x = encoder(decoder(x))" [ bytes ] @@ fun input ->
+  match Colombe.Reply.Decoder.of_string input with
+  | Error _ -> ()
+  | Ok v ->
+    match Colombe.Reply.Encoder.to_string v with
+    | Ok raw -> check_eq ~pp:pp_string ~eq:String.equal ~cmp:String.compare input raw
+    | Error err -> failf "Got an error: %a." Colombe.Reply.Encoder.pp_error err
+
+let iso1_request () =
   add_test ~name:"x = decoder(encoder(x))" [ command ] @@ fun v ->
   match Colombe.Request.Encoder.to_string v with
-  | Error err -> failf "Got an error while encoder: %a." Colombe.Request.Encoder.pp_error err
+  | Error err -> failf "Got an error while encoding: %a." Colombe.Request.Encoder.pp_error err
   | Ok raw ->
     match Colombe.Request.Decoder.of_string raw with
     | Ok v' -> check_eq ~pp:Colombe.Request.Request.pp ~eq:Colombe.Request.Request.equal v v'
     | Error err -> failf "Got an error while decoding: %a." Colombe.Request.Decoder.pp_error err
 
+let iso1_reply () =
+  add_test ~name:"x = decoder(encoder(x))" [ response ] @@ fun v ->
+  match Colombe.Reply.Encoder.to_string v with
+  | Error err -> failf "Got an error while encoding: %a." Colombe.Reply.Encoder.pp_error err
+  | Ok raw ->
+    match Colombe.Reply.Decoder.of_string raw with
+    | Ok v' -> check_eq ~pp:Colombe.Reply.Reply.pp ~eq:Colombe.Reply.Reply.equal v v'
+    | Error err -> failf "Got an error while decoding: %a." Colombe.Reply.Decoder.pp_error err
+
 let () =
-  never_raise () ;
-  iso0 () ;
-  iso1 ()
+  never_raise0 () ;
+  never_raise1 () ;
+  iso0_request () ;
+  iso1_request () ;
+  iso0_reply () ;
+  iso1_reply ()
