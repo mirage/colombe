@@ -1,20 +1,17 @@
-module Request : sig
-  type t =
-    [ `Hello of Domain.t
-    | `Mail of Reverse_path.t * (string * string option) list
-    | `Recipient of Forward_path.t * (string * string option) list
-    | `Expand of string
-    | `Data
-    | `Help of string option
-    | `Noop of string option
-    | `Verify of string
-    | `Reset
-    | `Quit ]
+type t =
+  [ `Hello of Domain.t
+  | `Mail of Reverse_path.t * (string * string option) list
+  | `Recipient of Forward_path.t * (string * string option) list
+  | `Expand of string
+  | `Data
+  | `Help of string option
+  | `Noop of string option
+  | `Verify of string
+  | `Reset
+  | `Quit ]
 
-  val equal : t -> t -> bool
-
-  val pp : t Fmt.t
-end
+val equal : t -> t -> bool
+val pp : t Fmt.t
 
 module Decoder : sig
   type decoder
@@ -29,6 +26,7 @@ module Decoder : sig
     | Expected_eol_or_space
     | No_enough_space
     | Assert_predicate of (char -> bool)
+    | Invalid_code of int
 
   val pp_error : error Fmt.t
 
@@ -43,11 +41,13 @@ module Decoder : sig
              ; buffer : bytes
              ; committed : int }
 
+  val request : decoder -> t state
+
   val decoder : unit -> decoder
   val decoder_from : string -> decoder
-  val request : decoder -> Request.t state
-  val of_string : string -> (Request.t, error) result
-  val of_string_raw : string -> int ref -> (Request.t, error) result
+
+  val of_string : string -> (t, error) result
+  val of_string_raw : string -> int ref -> (t, error) result
 end
 
 module Encoder : sig
@@ -65,7 +65,9 @@ module Encoder : sig
     | Error of error
     | Ok
 
+  val request : t -> encoder -> state
+
   val encoder : unit -> encoder
-  val request : Request.t -> encoder -> state
-  val to_string : Request.t -> (string, error) result
+
+  val to_string : t -> (string, error) result
 end
