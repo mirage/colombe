@@ -95,7 +95,7 @@ let command =
 let code = range ~min:200 600
 let line = everything_expect_crlf
 
-let response = map [ code; list1 line ] @@ Colombe.Reply.Reply.v
+let response = map [ code; list1 line ] @@ Colombe.Reply.v
 
 let failf fmt = Fmt.kstrf fail fmt
 
@@ -166,7 +166,7 @@ let iso1_request () =
   | Error err -> failf "Got an error while encoding: %a." Colombe.Request.Encoder.pp_error err
   | Ok raw ->
     match Colombe.Request.Decoder.of_string raw with
-    | Ok v' -> check_eq ~pp:Colombe.Request.Request.pp ~eq:Colombe.Request.Request.equal v v'
+    | Ok v' -> check_eq ~pp:Colombe.Request.pp ~eq:Colombe.Request.equal v v'
     | Error err -> failf "Got an error while decoding: %a." Colombe.Request.Decoder.pp_error err
 
 let iso1_reply () =
@@ -175,7 +175,7 @@ let iso1_reply () =
   | Error err -> failf "Got an error while encoding: %a." Colombe.Reply.Encoder.pp_error err
   | Ok raw ->
     match Colombe.Reply.Decoder.of_string raw with
-    | Ok v' -> check_eq ~pp:Colombe.Reply.Reply.pp ~eq:Colombe.Reply.Reply.equal v v'
+    | Ok v' -> check_eq ~pp:Colombe.Reply.pp ~eq:Colombe.Reply.equal v v'
     | Error err -> failf "Got an error while decoding: %a." Colombe.Reply.Decoder.pp_error err
 
 let () =

@@ -1,6 +1,8 @@
 (library
  (name colombe)
  (modules colombe
+          decoder
+          encoder
           request
           reply
           domain
