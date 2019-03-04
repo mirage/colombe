@@ -139,7 +139,7 @@ let results =
   ; `Noop None ]
 
 let request =
-  Alcotest.testable Request.Request.pp Request.Request.equal
+  Alcotest.testable Request.pp Request.equal
 
 let test_requests_0 () =
   let make (raw, expected) =
@@ -152,9 +152,9 @@ let test_requests_0 () =
 
 let test_requests_1 () =
   let make (value, raw) =
-    Alcotest.test_case (Fmt.to_to_string Request.Request.pp value) `Quick @@ fun () ->
+    Alcotest.test_case (Fmt.to_to_string Request.pp value) `Quick @@ fun () ->
     match Request.Encoder.to_string value with
-    | Ok result -> Alcotest.(check string) (Fmt.to_to_string Request.Request.pp value) raw result
+    | Ok result -> Alcotest.(check string) (Fmt.to_to_string Request.pp value) raw result
     | Error err -> Alcotest.failf "%a." Request.Encoder.pp_error err
   in
   List.map make (List.combine results requests)
@@ -258,7 +258,7 @@ let results =
   ; `PP_221 ["foo.com Service closing transmission channel"]
   ; `Other (666, ["Going to Hell!"])]
 
-let reply = Alcotest.testable Reply.Reply.pp Reply.Reply.equal
+let reply = Alcotest.testable Reply.pp Reply.equal
 
 let test_replies_0 () =
   let get_first_line raw =
@@ -280,9 +280,9 @@ let test_replies_0 () =
 
 let test_replies_1 () =
   let make (value, raw) =
-    Alcotest.test_case (Fmt.to_to_string Reply.Reply.pp value) `Quick @@ fun () ->
+    Alcotest.test_case (Fmt.to_to_string Reply.pp value) `Quick @@ fun () ->
     match Reply.Encoder.to_string value with
-    | Ok result -> Alcotest.(check string) (Fmt.to_to_string Reply.Reply.pp value) raw result
+    | Ok result -> Alcotest.(check string) (Fmt.to_to_string Reply.pp value) raw result
     | Error err -> Alcotest.failf "%a." Reply.Encoder.pp_error err
   in
   List.map make (List.combine results replies)
