@@ -223,7 +223,7 @@ module Decoder = struct
     | Expected_string s -> Fmt.pf ppf "(Expected_string %s)" s
     | Expected_eol -> Fmt.string ppf "Expected_eol"
     | No_enough_space -> Fmt.string ppf "No_enough_space"
-    | Invalid_code c -> Fmt.pf ppf "(Invalid_code %03d)" c
+    | Invalid_code c -> Fmt.pf ppf "(Invalid_code %d)" c
     | Assert_predicate _ -> Fmt.string ppf "(Assert_predicate #predicate)"
 
   type 'v state =
@@ -278,7 +278,8 @@ module Decoder = struct
     let idx = ref 0 in
     let res = ref 0 in
     while !idx < len
-    do res := (!res * 10) + (unsafe_get_uint8 raw (off + !idx) - 48) ; incr idx done ; !res
+    do res := (!res * 10) + (unsafe_get_uint8 raw (off + !idx) - 48) ; incr idx done ;
+    if len <> 3 then leave_with decoder (Invalid_code !res) ; !res
 
   let peek_while_eol decoder =
     let idx = ref decoder.pos in
