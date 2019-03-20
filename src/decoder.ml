@@ -115,7 +115,9 @@ let prompt k decoder =
   let rec go off =
     if off = Bytes.length decoder.buffer
     then Error { error= No_enough_space; buffer= decoder.buffer; committed= decoder.pos; }
-    else if not (at_least_one_line decoder)
+    else if not (at_least_one_line { decoder with max= off })
+    (* XXX(dinosaure): we make a new decoder here and we did __not__ set [decoder.max] owned by end-user,
+       and this is exactly what we want. *)
     then Read { buffer= decoder.buffer
               ; off
               ; len= Bytes.length decoder.buffer - off
