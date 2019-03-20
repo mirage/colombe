@@ -1,0 +1,6 @@
+(executable
+  (public_name smtp-client)
+  (name client)
+  (modules client protocol)
+  (package colombe)
+  (libraries colombe lwt lwt.unix tls tls.lwt))
