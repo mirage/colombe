@@ -32,21 +32,24 @@ let tls_wrap server =
   let config = Tls.Config.(client ~authenticator ~ciphers:Ciphers.supported ()) in
   Tls_lwt.connect_ext config server
 
-(** Send an email
-    [from] and [to_] must be enclosed in angle brackets, eg. ["<foo@bar.net>"] *)
+(** Send an email *)
 let send_mail
     ~server
-    ~from ~to_
+    ~from:(from_name, from_email)
+    ~to_:(to_name, to_email)
     ?(headers=[])
     ?(content="text/html")
     subject body =
-  let sender = Reverse_path.Parser.of_string from in
-  let recipient = Forward_path.Parser.of_string to_ in
+  let f = Printf.sprintf in
+  let from_email = f "<%s>" from_email
+  and to_email = f "<%s>" to_email in
+  let sender = Reverse_path.Parser.of_string from_email in
+  let recipient = Forward_path.Parser.of_string to_email in
   let data =
-    let f = Printf.sprintf in
+    let maybe_name = function Some name -> name ^ " " | None -> "" in
     [
-      f "From: %s" from;
-      f "To: %s" to_;
+      f "From: %s%s" (maybe_name from_name) from_email;
+      f "To: %s%s" (maybe_name to_name) to_email;
       f "Subject: %s" subject;
       f "Content-type: %s" content;
     ]
