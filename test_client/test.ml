@@ -1,8 +1,8 @@
 let () =
   Client.send_mail
     ~server:("smtp.laposte.net", 465)
-    ~from:"<foo.bar.foo@laposte.net>"
-    ~to_:"<someone@gmail.com>"
+    ~from:(Some "me", "foo.bar.foo@laposte.net")
+    ~to_:(Some "someone", "someone@gmail.com")
     ~content:"text/plain"
     "Blabla"
     "Hello world"
