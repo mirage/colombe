@@ -7,8 +7,8 @@ type context = {decoder: Reply.Decoder.decoder; encoder: Request.Encoder.encoder
 val run:
   context ->
   [< `Auth1
-  | `Auth2
-  | `Auth3
+  | `Auth2 of string
+  | `Auth3 of string
   | `Data
   | `Data_feed of string list
   | `Establishment
