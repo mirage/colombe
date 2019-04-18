@@ -93,6 +93,13 @@ let reply_to_quit reply _ctx =
   | `PP_221 _ as reply -> Fmt.pf Fmt.stdout "Quit response: \x1b[33;1m%a\x1b[0m\n%!" Reply.pp reply; `End End
   | reply -> Fmt.pf Fmt.stdout "Invalid reponse: \x1b[31;2m%a\x1b[0m\n%!" Reply.pp reply; assert false
 
+let write_line str cont =
+  let len = String.length str in
+  let b = Bytes.create (len + 2) in
+  Bytes.blit_string str 0 b 0 len;
+  Bytes.blit_string "\r\n" 0 b len 2;
+  `Write (b, 0, len + 2, cont)
+
 let run context = function
   | `Establishment ->
     (decode reply_to_connection_establishment)
@@ -103,14 +110,11 @@ let run context = function
     context
   | `Auth1 ->
     Fmt.pf Fmt.stdout "\x1b[36mAuth\x1b[0m\n%!" ;
-    let str = "AUTH LOGIN\r\n" in
-    `Write (Bytes.of_string str, 0, String.length str, (fun _ -> decode (reply_to_auth Auth1) context))
-  | `Auth2 ->
-    let str = "Zm9vLmJhci5mb29AbGFwb3N0ZS5uZXQ=\r\n" in
-    `Write (Bytes.of_string str, 0, String.length str, (fun _ -> decode (reply_to_auth Auth2) context))
-  | `Auth3 ->
-    let str = "Rm9vMC5CYXIx\r\n" in
-    `Write (Bytes.of_string str, 0, String.length str, (fun _ -> decode (reply_to_auth Auth3) context))
+    write_line "AUTH LOGIN" (fun _ -> decode (reply_to_auth Auth1) context)
+  | `Auth2 login ->
+    write_line login (fun _ -> decode (reply_to_auth Auth2) context)
+  | `Auth3 password ->
+    write_line password (fun _ -> decode (reply_to_auth Auth3) context)
   | `Mail _ as mail ->
     encode (mail)
       (decode reply_to_mail)

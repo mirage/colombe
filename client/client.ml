@@ -4,7 +4,7 @@ open Protocol
 
 let context = {decoder= Reply.Decoder.decoder (); encoder= Request.Encoder.encoder (); status= Beginning}
 
-let main ~sender ~recipient ~data ic oc =
+let main ~auth:(login, password) ~sender ~recipient ~data ic oc =
   let rec go = function
     | `Error s -> Fmt.pf Fmt.stdout "Error: %s\n%!" s; Lwt.fail Exit
     | `Read (buf, off, len, continue) -> Lwt_io.(read_line ic) >>= (fun s -> let s = s ^ "\r\n" in Bytes.blit_string s 0 buf off (min (String.length s) len); go (continue (min (String.length s) len)))
@@ -14,8 +14,8 @@ let main ~sender ~recipient ~data ic oc =
       | Beginning -> Lwt.fail Exit
       | Established -> go (run context (`Hello Domain.(Domain [ "bar"; "com" ])))
       | Connected -> go (run context `Auth1)
-      | Auth1 -> go (run context `Auth2)
-      | Auth2 -> go (run context `Auth3)
+      | Auth1 -> go (run context (`Auth2 login))
+      | Auth2 -> go (run context (`Auth3 password))
       | Auth3 -> go (run context (`Mail sender))
       | Mail -> go (run context (`Recipient recipient))
       | Rcpt -> go (run context `Data)
@@ -32,9 +32,11 @@ let tls_wrap server =
   let config = Tls.Config.(client ~authenticator ~ciphers:Ciphers.supported ()) in
   Tls_lwt.connect_ext config server
 
-(** Send an email *)
+(** Send an email
+    [~auth] is the tuple (login, password) base64-encoded, padded *)
 let send_mail
     ~server
+    ~auth
     ~from:(from_name, from_email)
     ~to_:(to_name, to_email)
     ?(headers=[])
@@ -58,4 +60,4 @@ let send_mail
   in
   tls_wrap server
   >>= fun (ic, oc) ->
-  main ~sender ~recipient ~data ic oc
+  main ~auth ~sender ~recipient ~data ic oc
