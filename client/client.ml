@@ -40,7 +40,6 @@ let send_mail
     ~from:(from_name, from_email)
     ~to_:(to_name, to_email)
     ?(headers=[])
-    ?(content="text/html")
     subject body =
   let f = Printf.sprintf in
   let from_email = f "<%s>" from_email
@@ -53,7 +52,6 @@ let send_mail
       f "From: %s%s" (maybe_name from_name) from_email;
       f "To: %s%s" (maybe_name to_name) to_email;
       f "Subject: %s" subject;
-      f "Content-type: %s" content;
     ]
     @ headers
     @ [ body; "."; "" ]
