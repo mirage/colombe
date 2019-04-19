@@ -32,8 +32,30 @@ let tls_wrap server =
   let config = Tls.Config.(client ~authenticator ~ciphers:Ciphers.supported ()) in
   Tls_lwt.connect_ext config server
 
+let stream_of_list lst =
+  let ptr = ref lst in
+  fun () ->
+    match !ptr with
+    | hd :: tl -> ptr := tl; Some hd
+    | [] -> None
+
+let stream_concat streams =
+  let streams = ref streams in
+  let rec next () =
+    match !streams with
+    | s :: tl ->
+        begin match s () with
+        | Some _ as r -> r
+        | None -> streams := tl; next ()
+        end
+    | [] -> None
+  in
+  next
+
 (** Send an email
-    [~auth] is the tuple (login, password) base64-encoded, padded *)
+    [~auth] is the tuple (login, password) base64-encoded, padded.
+    [body] is a function [unit -> string option], that is called repeatedly for
+    each line of the body until it returns [None]. *)
 let send_mail
     ~server
     ~auth
@@ -48,13 +70,16 @@ let send_mail
   let recipient = Forward_path.Parser.of_string to_email in
   let data =
     let maybe_name = function Some name -> name ^ " " | None -> "" in
-    [
-      f "From: %s%s" (maybe_name from_name) from_email;
-      f "To: %s%s" (maybe_name to_name) to_email;
-      f "Subject: %s" subject;
+    stream_concat [
+      stream_of_list [
+        f "From: %s%s" (maybe_name from_name) from_email;
+        f "To: %s%s" (maybe_name to_name) to_email;
+        f "Subject: %s" subject;
+      ];
+      stream_of_list headers;
+      body;
+      stream_of_list [ "."; "" ];
     ]
-    @ headers
-    @ [ body; "."; "" ]
   in
   tls_wrap server
   >>= fun (ic, oc) ->

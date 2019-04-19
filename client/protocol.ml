@@ -1,5 +1,7 @@
 open Colombe
 
+type 'a stream = unit -> 'a option
+
 type status = Beginning | Established | Connected | Auth1 | Auth2 | Auth3 | Mail | Rcpt | Data | Data_feed | End
 
 type context = {decoder: Reply.Decoder.decoder; encoder: Request.Encoder.encoder; status: status}
@@ -100,6 +102,17 @@ let write_line str cont =
   Bytes.blit_string "\r\n" 0 b len 2;
   `Write (b, 0, len + 2, cont)
 
+let stream_string_concat sep next =
+  let b = Buffer.create 120 in
+  while match next () with
+    | Some s ->
+      Buffer.add_string b s;
+      Buffer.add_string b sep;
+      true
+    | None -> false
+  do () done;
+  Buffer.to_bytes b
+
 let run context = function
   | `Establishment ->
     (decode reply_to_connection_establishment)
@@ -128,8 +141,8 @@ let run context = function
       (decode reply_to_data)
     context
   | `Data_feed l ->
-    let str = String.concat "\r\n" l in
-    `Write (Bytes.of_string str, 0, String.length str, (fun _ -> decode (reply_to_data_feed) context))
+    let str = stream_string_concat "\r\n" l in
+    `Write (str, 0, Bytes.length str, (fun _ -> decode (reply_to_data_feed) context))
   | `Quit ->
     encode (`Quit)
       (decode reply_to_quit)
