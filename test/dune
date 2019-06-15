@@ -1,4 +1,8 @@
-(test
+(executable
  (name test)
- (package colombe)
  (libraries colombe alcotest))
+
+(alias
+ (name runtest)
+ (deps (:test test.exe))
+ (action (run %{test} --color=always)))

@@ -12,11 +12,13 @@ type t =
   | `Recipient of Forward_path.t * (string * string option) list
   | `Expand of string
   | `Data
+  | `Data_end
   | `Help of string option
   | `Noop of string option
   | `Verify of string
   | `Reset
-  | `Quit ]
+  | `Quit
+  | `Extension of Rfc1869.t ]
 
 let equal_parameters a b =
   let a = List.sort (fun (ka, _) (kb, _) -> String.compare ka kb) a in
@@ -38,6 +40,7 @@ let equal a b = match a, b with
     Forward_path.equal a b && equal_parameters pa pb
   | `Expand a, `Expand b -> String.equal a b
   | `Data, `Data -> true
+  | `Data_end, `Data_end -> true
   | `Help a, `Help b -> Option.equal String.equal a b
   | `Noop a, `Noop b -> Option.equal String.equal a b
   | `Verify a, `Verify b -> String.equal a b
@@ -58,11 +61,17 @@ let pp ppf = function
       Fmt.(Dump.list (pair string (option string))) parameters
   | `Expand data -> Fmt.pf ppf "(Expand %s)" data
   | `Data -> Fmt.string ppf "Data"
+  | `Data_end -> Fmt.string ppf "<dot>"
   | `Help data -> Fmt.pf ppf "(Help %a)" Fmt.(option string) data
   | `Noop data -> Fmt.pf ppf "(Noop %a)" Fmt.(option string) data
   | `Verify data -> Fmt.pf ppf "(Verify %s)" data
   | `Reset -> Fmt.string ppf "Reset"
   | `Quit -> Fmt.string ppf "Quit"
+  | `Extension ext ->
+    let Rfc1869.V (_, m, _) = Rfc1869.prj ext in
+    let name = (match m with Rfc1869.As_client (desc, _) -> desc.Rfc1869.name
+                           | Rfc1869.As_server (desc, _) -> desc.Rfc1869.name) in
+    Fmt.pf ppf "(Extension %s)" name
 
 module Decoder = struct
   include Decoder
@@ -75,6 +84,7 @@ module Decoder = struct
   let () = Hashtbl.add trie "MAIL" `Mail
   let () = Hashtbl.add trie "RCPT" `Recipient
   let () = Hashtbl.add trie "DATA" `Data
+  let () = Hashtbl.add trie "." `Data_end
   let () = Hashtbl.add trie "RSET" `Reset
   let () = Hashtbl.add trie "VRFY" `Verify
   let () = Hashtbl.add trie "EXPN" `Expand
@@ -82,21 +92,25 @@ module Decoder = struct
   let () = Hashtbl.add trie "NOOP" `Noop
   let () = Hashtbl.add trie "QUIT" `Quit
 
+  let extensions : (string, Rfc1869.t) Hashtbl.t = Hashtbl.create 16
+
   let command decoder =
     let raw, off, len = peek_while_eol_or_space decoder in
     let command = match Bytes.unsafe_get raw (off + len - 1) with
       | ' ' -> Bytes.sub_string raw off (len - 1)
       | '\n' -> Bytes.sub_string raw off (len - 2)
-      | _ -> assert false (* end with LF or SPACE *)in
+      | _ -> assert false (* end with LF or SPACE *) in
     match Hashtbl.find trie command with
     | command ->
       decoder.pos <- decoder.pos + len ; command
-    | exception Not_found ->
-      leave_with decoder (Invalid_command command)
+    | exception Not_found -> match Hashtbl.find extensions command with
+      | ext ->
+      decoder.pos <- decoder.pos + len ; `Extension (command, ext)
+      | exception Not_found -> assert false (* TODO *)
 
   let hello (decoder : decoder) =
     let raw_crlf, off, len = peek_while_eol decoder in
-    let domain = Domain.Parser.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
+    let domain = Domain.of_string_exn (Bytes.sub_string raw_crlf off (len - 2)) in
     decoder.pos <- decoder.pos + len ; return (`Hello domain) decoder
 
   let mail decoder =
@@ -137,6 +151,7 @@ module Decoder = struct
       string "TO:" decoder ;
       recipient decoder
     | `Data -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data decoder
+    | `Data_end -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data_end decoder
     | `Reset -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Reset decoder
     | `Verify ->
       let raw_crlf, off, len = peek_while_eol decoder in
@@ -149,6 +164,12 @@ module Decoder = struct
     | `Help -> help decoder
     | `Noop -> noop decoder
     | `Quit -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Quit decoder
+    | `Extension (_, _) ->
+      let raw_crlf, off, len = peek_while_eol decoder in
+      let _ = if len - 2 > 0 then Some (Bytes.sub_string raw_crlf off (len - 2)) else None in
+      decoder.pos <- decoder.pos + len ;
+
+      assert false
 
   let request decoder =
     if at_least_one_line decoder
@@ -180,7 +201,7 @@ module Encoder = struct
   let hello domain encoder =
     write "EHLO" encoder ; (* TODO: can write HELO. *)
     write " " encoder ;
-    write (Domain.Encoder.to_string domain) encoder ;
+    write (Domain.to_string domain) encoder ;
     crlf encoder
 
   let write_parameters parameters encoder =
@@ -250,6 +271,7 @@ module Encoder = struct
     | `Recipient (forward_path, parameters) ->
       recipient forward_path parameters encoder
     | `Data -> write "DATA" encoder ; crlf encoder
+    | `Data_end -> write "." encoder ; crlf encoder
     | `Reset -> write "RSET" encoder ; crlf encoder
     | `Verify argument ->
       verify argument encoder
@@ -260,6 +282,19 @@ module Encoder = struct
     | `Noop argument ->
       noop argument encoder
     | `Quit -> write "QUIT" encoder ; crlf encoder
+    | `Extension ext ->
+      match Rfc1869.prj ext with
+      | Rfc1869.V (v, Rfc1869.As_client (_, w), _) ->
+        let module Ext = (val w) in
+        ( match Ext.encode v with
+          | verb, Some args ->
+            write (verb :> string) encoder
+          ; write " " encoder
+          ; write args encoder
+          ; crlf encoder
+          | verb, None ->
+            write (verb :> string) encoder ; crlf encoder )
+      | _ -> assert false
 
   let request command encoder =
     let k encoder = request command encoder ; Ok in

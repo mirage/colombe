@@ -1,5 +1,5 @@
 (library
-  (public_name colombe.client)
-  (name client)
-  (modules client protocol)
-  (libraries colombe lwt tls tls.lwt))
+  (name lwt_client)
+  (public_name colombe.lwt_client)
+  (modules lwt_client send_mail)
+  (libraries domain-name colombe colombe.auth lwt tls tls.lwt))

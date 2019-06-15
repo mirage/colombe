@@ -1,0 +1,5 @@
+(library
+ (name auth)
+ (public_name colombe.auth)
+ (modules auth)
+ (libraries base64 colombe))
