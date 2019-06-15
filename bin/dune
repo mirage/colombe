@@ -1,0 +1,3 @@
+(executable
+ (name send_mail)
+ (libraries colombe.lwt_client mrmime ptime.clock.os))

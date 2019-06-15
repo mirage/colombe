@@ -187,7 +187,7 @@ let v code lines = match code with
   | code -> `Other (code, lines)
 
 module Decoder = struct
-  include Decoder
+  open Decoder
 
   let is_digit = function '0' .. '9' -> true | _ -> false
 
@@ -265,7 +265,7 @@ module Decoder = struct
 end
 
 module Encoder = struct
-  include Encoder
+  open Encoder
 
   let crlf encoder = write "\r\n" encoder
 

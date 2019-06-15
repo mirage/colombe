@@ -100,10 +100,15 @@ module Parser = struct
      <|> general_address_literal)
     <* char ']'
 
-  let of_string x =
+  let of_string_exn x =
     match parse_string (domain <|> address_literal) x with
     | Ok v -> v
     | Error _ -> Fmt.invalid_arg "Invalid domain: %s" x
+
+  let of_string x =
+    match parse_string (domain <|> address_literal) x with
+    | Ok _ as v -> v
+    | Error _ -> Rresult.R.error_msgf "Invalid domain: %S" x
 end
 
 module Encoder = struct
@@ -117,6 +122,10 @@ module Encoder = struct
     | Domain l -> Fmt.strf "%a" Fmt.(list ~sep:(const string ".") string) l
 end
 
+let of_string = Parser.of_string
+let of_string_exn = Parser.of_string_exn
+let to_string = Encoder.to_string
+
 exception Break
 
 let satisfy predicate x =
@@ -129,9 +138,64 @@ let extension k v =
   let is_dcontent = Parser.is_dcontent in
   if String.length k > 0 && satisfy is_ldh k && k.[String.length k - 1] <> '-'
      && String.length v > 0 && satisfy is_dcontent v
-  then Extension (k, v)
-  else Fmt.invalid_arg "Invalid key or value"
+  then Ok (Extension (k, v))
+  else Rresult.R.error_msgf "Invalid key:%S or value:%S" k v
 
-let ipv4 x = IPv4 x
+let is_atext_valid_string _ = true
 
-let ipv6 x = IPv6 x
+type atom = string
+
+let atom x =
+  if is_atext_valid_string x
+  then Ok x
+  else Rresult.R.error_msgf "atom %S does not respect standards" x
+
+let atom_exn x =
+  match atom x with
+  | Ok v -> v
+  | Error (`Msg err) -> invalid_arg err
+
+let a = atom_exn
+
+module Peano = struct
+  type z = Z
+  type 'a s = S
+end
+
+let unsafe_domain_of_list_exn = function
+  | [] -> Fmt.invalid_arg "A domain must contain at least one element"
+  | domain -> Domain domain
+
+type 'a domain =
+  | ( :: ) : atom * 'a domain -> 'a Peano.s domain
+  | [] : Peano.z domain
+
+let rec coerce : type a. a Peano.s domain -> string list = function
+  | [x] -> [x]
+  | x :: y :: r -> List.cons x (coerce (y :: r))
+
+let make_domain : type a. a domain -> (string list, [ `Msg of string ]) result = function
+  | [] -> Rresult.R.error_msg "A domain must contain at least one element"
+  | x :: r -> Ok (coerce (x :: r))
+
+type 'a w =
+  | WDomain : 'a domain w
+  | WIPv4 : Ipaddr.V4.t w
+  | WIPv6 : Ipaddr.V6.t w
+
+let domain = WDomain
+let ipv4 = WIPv4
+let ipv6 = WIPv6
+
+let make : type a. a w -> a -> (t, [ `Msg of string ]) result =
+  fun witness v ->
+  match witness with
+  | WDomain -> Rresult.R.(make_domain v >>| fun v -> Domain v)
+  | WIPv4 -> Ok (IPv4 v)
+  | WIPv6 -> Ok (IPv6 v)
+
+let v : type a. a w -> a -> t =
+  fun witness v ->
+  match make witness v with
+  | Ok v -> v
+  | Error (`Msg err) -> invalid_arg err

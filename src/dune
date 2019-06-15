@@ -1,13 +1,4 @@
 (library
  (name colombe)
- (modules colombe
-          decoder
-          encoder
-          request
-          reply
-          domain
-          path
-          reverse_path
-          forward_path)
  (public_name colombe)
- (libraries fmt ipaddr angstrom))
+ (libraries rresult fmt ipaddr angstrom))
