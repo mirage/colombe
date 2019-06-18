@@ -31,6 +31,8 @@ depends: [
   "domain-name"
   "lwt"
   "tls"
+  "base64"
+  "rresult"
   "alcotest"   {with-test}
   "crowbar"    {with-test}
   "fmt"
