@@ -106,7 +106,7 @@ module Decoder = struct
     | exception Not_found -> match Hashtbl.find extensions command with
       | ext ->
       decoder.pos <- decoder.pos + len ; `Extension (command, ext)
-      | exception Not_found -> assert false (* TODO *)
+      | exception Not_found -> leave_with decoder (Invalid_command command)
 
   let hello (decoder : decoder) =
     let raw_crlf, off, len = peek_while_eol decoder in

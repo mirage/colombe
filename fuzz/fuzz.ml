@@ -148,7 +148,7 @@ let iso0_request () =
   | Ok v ->
     match Colombe.Request.Encoder.to_string v with
     | Ok raw -> check_eq ~pp:pp_string ~eq:String.equal ~cmp:String.compare raw (String.sub input 0 !pos)
-    | Error err -> failf "Got an error: %a." Colombe.Request.Encoder.pp_error err
+    | Error err -> failf "Got an error: %a." Colombe.Encoder.pp_error err
 
 let iso0_reply () =
   add_test ~name:"x = encoder(decoder(x)) (reply)" [ bytes ] @@ fun input ->
@@ -158,25 +158,25 @@ let iso0_reply () =
   | Ok v ->
     match Colombe.Reply.Encoder.to_string v with
     | Ok raw -> check_eq ~pp:pp_string ~eq:String.equal ~cmp:String.compare raw (String.sub input 0 !pos)
-    | Error err -> failf "Got an error: %a." Colombe.Reply.Encoder.pp_error err
+    | Error err -> failf "Got an error: %a." Colombe.Encoder.pp_error err
 
 let iso1_request () =
   add_test ~name:"x = decoder(encoder(x)) (request)" [ command ] @@ fun v ->
   match Colombe.Request.Encoder.to_string v with
-  | Error err -> failf "Got an error while encoding: %a." Colombe.Request.Encoder.pp_error err
+  | Error err -> failf "Got an error while encoding: %a." Colombe.Encoder.pp_error err
   | Ok raw ->
     match Colombe.Request.Decoder.of_string raw with
     | Ok v' -> check_eq ~pp:Colombe.Request.pp ~eq:Colombe.Request.equal v v'
-    | Error err -> failf "Got an error while decoding: %a." Colombe.Request.Decoder.pp_error err
+    | Error err -> failf "Got an error while decoding: %a." Colombe.Decoder.pp_error err
 
 let iso1_reply () =
   add_test ~name:"x = decoder(encoder(x)) (reply)" [ response ] @@ fun v ->
   match Colombe.Reply.Encoder.to_string v with
-  | Error err -> failf "Got an error while encoding: %a." Colombe.Reply.Encoder.pp_error err
+  | Error err -> failf "Got an error while encoding: %a." Colombe.Encoder.pp_error err
   | Ok raw ->
     match Colombe.Reply.Decoder.of_string raw with
     | Ok v' -> check_eq ~pp:Colombe.Reply.pp ~eq:Colombe.Reply.equal v v'
-    | Error err -> failf "Got an error while decoding: %a." Colombe.Reply.Decoder.pp_error err
+    | Error err -> failf "Got an error while decoding: %a." Colombe.Decoder.pp_error err
 
 let () =
   never_raise0 () ;
