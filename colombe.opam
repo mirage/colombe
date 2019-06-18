@@ -29,6 +29,8 @@ depends: [
   "angstrom"
   "ipaddr"     {>= "2.9.0"}
   "domain-name"
+  "lwt"
+  "tls"
   "alcotest"   {with-test}
   "crowbar"    {with-test}
   "fmt"
