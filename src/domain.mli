@@ -12,6 +12,7 @@ module Parser : sig
   val is_alpha : char -> bool
   val is_digit : char -> bool
   val is_dash : char -> bool
+  val is_dcontent: char -> bool
 
   val address_literal : t Angstrom.t
   val domain : t Angstrom.t
