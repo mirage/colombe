@@ -28,6 +28,7 @@ depends: [
   "dune"       {build}
   "angstrom"
   "ipaddr"     {>= "2.9.0"}
+  "domain-name"
   "alcotest"   {with-test}
   "crowbar"    {with-test}
   "fmt"
