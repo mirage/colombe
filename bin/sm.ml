@@ -119,7 +119,7 @@ let () = Logs.set_reporter @@ Logs_fmt.reporter ~pp_header ~app:Fmt.stdout ~dst:
 let run () =
   let open Lwt.Infix in
 
-  Lwt_client.run
+  Sendmail_lwt.run
     ~logger:(Logs.src_log (Logs.Src.create ~doc:"sendmail" "sendmail"))
     ~hostname:(Domain_name.of_string_exn "smtp.gmail.com") ~port:465
     ~domain:Colombe.Domain.(v domain [ a "gmail"; a "com" ])
@@ -131,7 +131,7 @@ let run () =
   >>= function
   | Ok () -> Lwt.return ()
   | Error err ->
-    Fmt.epr "Error: %a.\n%!" Lwt_client.pp_error err ;
+    Fmt.epr "Error: %a.\n%!" Sendmail_lwt.pp_error err ;
     Lwt.return ()
 
 let () = Lwt_main.run (run ())
