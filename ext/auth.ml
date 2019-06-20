@@ -1,50 +1,96 @@
+(* XXX(dinosaure): RFC 4616, mechanism consists of a single message, a string of
+   UTF-8 encoded Unicode characters. TODO: [SASLprep][RFC4013]/[hannesm/precis] *)
+
 module Client = struct
   type mechanism =
     | PLAIN
     | CRAM_MD5
-    | DIGEST_MD5
-    | LOGIN
-    (* XXX(dinosaure): see https://www.iana.org/assignments/sasl-mechanisms/sasl-mechanisms.xhtml *)
 
-  let auth : Colombe.Rfc1869.verb = Obj.magic "AUTH"
+  let pp_mechanism ppf = function
+    | PLAIN -> Fmt.string ppf "PLAIN"
+    | CRAM_MD5 -> Fmt.string ppf "CRAM_MD5"
+
+  let mechanism_to_string = Fmt.to_to_string pp_mechanism
+
+  type error =
+    | Unsupported_mechanism of mechanism (* 504 *)
+    | Authentication_rejected (* 501 *)
+    | Weak_mechanism of mechanism (* 534 *)
+    | Authentication_failed (* 535 *)
+    | Line_too_long (* 500 *)
+    | Encryption_required (* 538 *)
+    | Invalid_ehlo of string
+    | Invalid_state
+
+  let pp_error ppf = function
+    | Unsupported_mechanism m -> Fmt.pf ppf "(Unsupported_mechanism %a)" pp_mechanism m
+    | Authentication_rejected -> Fmt.string ppf "Authentication_rejected"
+    | Authentication_failed -> Fmt.string ppf "Authentication_failed"
+    | Weak_mechanism m -> Fmt.pf ppf "(Weak_mechanism %a)" pp_mechanism m
+    | Line_too_long -> Fmt.string ppf "Line_too_long"
+    | Encryption_required -> Fmt.string ppf "Encryption_required"
+    | Invalid_ehlo args -> Fmt.pf ppf "(Invalid_ehlo %S)" args
+    | Invalid_state -> Fmt.string ppf "Invalid_state"
 
   type t =
     { mechanism : mechanism
-    ; q : [ `q0 | `q1 | `q2 | `q3 ]
+    ; q : [ `q0 | `q1_plain | `authenticated ]
     ; username : string
     ; password : string }
 
+  let ehlo t args =
+    let ms = Astring.String.cuts ~sep:" " args in
+    if List.exists ((=) (mechanism_to_string t.mechanism)) ms
+    then Ok t
+    else Error (Unsupported_mechanism t.mechanism)
+
   let encode t = match t.q, t.mechanism with
-    | `q1, PLAIN -> auth, Some "PLAIN"
-    | `q2, PLAIN ->
-      let combined = Fmt.strf "\000%s\000%s" t.username t.password in
-      Obj.magic (Base64.encode_exn ~pad:true combined, None)
+    | `q0, PLAIN ->
+      "AUTH", Some "PLAIN"
+    | `q1_plain, PLAIN ->
+      let combined = Fmt.strf "\000%s\000%s" t.username t.password in (* lol *)
+      Base64.encode_exn ~pad:true combined, None
     | _, _ -> assert false
+
+  type response = TP_334 | PP_250 | PP_235
 
   let expect t = match t.q with
-    | `q0 -> 250
-    | `q1 -> 334
-    | `q2 -> 235
-    | `q3 -> assert false
+    | `q0 -> Some TP_334
+    | `q1_plain -> Some PP_235
+    | `authenticated -> None
 
   let decode txts t = match t.q, txts with
-    | `q0, (250, _txts) ->
-      { t with q= `q1 }
-    | `q1, (334, _txts) -> { t with q= `q2 }
-    | `q2, (235, _txts) -> { t with q= `q3 }
-    | _, _ -> assert false
+    | `q0, (504, _txts) ->
+      Error (Unsupported_mechanism t.mechanism)
+    | `q0, (538, _txts) ->
+      Error Encryption_required
+    | `q0, (534, _txts) ->
+      assert (t.mechanism = PLAIN) ;
+      Error (Weak_mechanism t.mechanism)
+    | `q0, (334, _txts) ->
+      (* XXX(dinosaure): here, [_txts] should be empty. *)
+      Ok { t with q= `q1_plain }
+    | `q1_plain, (235, _txts) -> Ok { t with q= `authenticated }
+    | `q1_plain, (500, _txts) ->
+      Error Line_too_long
+    | `q1_plain, (501, _txts) ->
+      Error Authentication_rejected
+    | `q1_plain, (535, _txts) ->
+      Error Authentication_failed
+    | _ -> Error Invalid_state
 
-  let is_authenticated t = t.q = `q3
+  let is_authenticated t = t.q = `authenticated
 
   let mail_from _t _mail_from = []
   let rcpt_to _t _rcpt_to = []
 end
 
 type authenticator = Client.t
+let verb = "AUTH"
 
-let desc : Colombe.Rfc1869.description =
+let description : Colombe.Rfc1869.description =
   { name= "Authentication"
-  ; elho= Obj.magic "AUTH"
-  ; verb= [ Obj.magic "AUTH" ] }
+  ; elho= "AUTH"
+  ; verb= [ "AUTH" ] }
 
-let client = Colombe.Rfc1869.(inj (As_client (desc, (module Client))))
+let extension = Colombe.Rfc1869.inj (description, (module Client))

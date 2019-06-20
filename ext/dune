@@ -2,4 +2,10 @@
  (name auth)
  (public_name colombe.auth)
  (modules auth)
- (libraries base64 colombe))
+ (libraries astring base64 colombe))
+
+(library
+ (name enhanced_status_codes)
+ (public_name colombe.enhanced_status_codes)
+ (modules enhanced_status_codes)
+ (libraries angstrom logs colombe))

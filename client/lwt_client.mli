@@ -3,6 +3,7 @@ type error
 val pp_error : error Fmt.t
 
 val run :
+  ?logger:(module Logs.LOG) ->
   hostname:Domain_name.t ->
   ?port:int ->
   domain:Colombe.Domain.t ->
