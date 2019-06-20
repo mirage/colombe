@@ -1,0 +1,14 @@
+(library
+  (name sendmail)
+  (public_name sendmail)
+  (modules sendmail)
+  (libraries colombe
+             colombe.auth
+             colombe.enhanced_status_codes))
+
+(library
+  (name sendmail_lwt)
+  (public_name sendmail-lwt)
+  (modules sendmail_lwt)
+  (libraries sendmail domain-name
+             lwt tls tls.lwt))

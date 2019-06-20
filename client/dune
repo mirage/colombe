@@ -1,5 +1,0 @@
-(library
-  (name lwt_client)
-  (public_name colombe.lwt_client)
-  (modules lwt_client send_mail)
-  (libraries domain-name colombe colombe.auth colombe.enhanced_status_codes lwt tls tls.lwt))
