@@ -28,12 +28,11 @@ depends: [
   "dune"       {build}
   "angstrom"
   "ipaddr"     {>= "2.9.0"}
-  "domain-name"
-  "lwt"
+  "fmt"
   "tls"
+  "logs"
   "base64"
   "rresult"
   "alcotest"   {with-test}
   "crowbar"    {with-test}
-  "fmt"
 ]
