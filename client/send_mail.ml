@@ -29,6 +29,21 @@ module Send_mail_p = struct
     | TP_354 : tp_354 t
     | TP_334 : tp_334 t
 
+  let pp : type x. x t Fmt.t = fun ppf -> function
+    | Helo -> Fmt.string ppf "EHLO"
+    | Mail_from -> Fmt.string ppf "MAIL FROM"
+    | Rcpt_to -> Fmt.string ppf "RCPT TO"
+    | Data -> Fmt.string ppf "DATA"
+    | Dot -> Fmt.string ppf "DOT"
+    | Quit -> Fmt.string ppf "QUIT"
+    | PP_220 -> Fmt.string ppf "PP-220"
+    | PP_221 -> Fmt.string ppf "PP-221"
+    | PP_235 -> Fmt.string ppf "PP-235"
+    | PP_250 -> Fmt.string ppf "PP-250"
+    | TP_334 -> Fmt.string ppf "TP-334"
+    | TP_354 -> Fmt.string ppf "TP-354"
+    | Auth -> Fmt.string ppf "Auth"
+
   let is_request (type a) (w : a t) : bool = match w with
     | Helo -> true | Mail_from -> true | Rcpt_to -> true | Data -> true | Dot -> true | Quit -> true
     | _ -> false
@@ -36,15 +51,17 @@ module Send_mail_p = struct
   type error =
     | Decoder of Decoder.error
     | Encoder of Encoder.error
-    | Unexpected_request of Request.t
-    | Unexpected_reply of Reply.t
+    | Unexpected_request : 'x t * Request.t -> error
+    | Unexpected_reply : 'x t * Reply.t -> error
+    | Auth_error of Auth.Client.error
     | Invalid_state
 
   let pp_error ppf = function
     | Decoder err -> Decoder.pp_error ppf err
     | Encoder err -> Encoder.pp_error ppf err
-    | Unexpected_request request -> Fmt.pf ppf "(Unexpected_request @[<hov>%a@])" Request.pp request
-    | Unexpected_reply reply -> Fmt.pf ppf "(Unexpected_reply @[<hov>%a@])" Reply.pp reply
+    | Unexpected_request (w, v) -> Fmt.pf ppf "(Unexpected_request expect:%a,@ received:@[<hov>%a@])" pp w Request.pp v
+    | Unexpected_reply (w, v) -> Fmt.pf ppf "(Unexpected_reply expect:%a,@ received:@[<hov>%a@])" pp w Reply.pp v
+    | Auth_error err -> Fmt.pf ppf "(Auth_error @[<hov>%a@])" Auth.Client.pp_error err
     | Invalid_state -> Fmt.pf ppf "Invalid_state"
 
   let uncast
@@ -71,8 +88,8 @@ module Send_mail_p = struct
       | Encoder.Ok -> k ctx
       | Encoder.Write { buffer; off; len; continue; } ->
         let continue n = go (continue n) in
-        Wr { buffer; off; len; k= continue; }
-      | Encoder.Error err -> Er (Encoder err) in
+        Write { buffer; off; len; k= continue; }
+      | Encoder.Error err -> Error (Encoder err) in
     let res = match uncast w v with
       | L request -> Request.Encoder.request request ctx.encoder
       | R reply -> Reply.Encoder.response reply ctx.encoder in
@@ -93,14 +110,22 @@ module Send_mail_p = struct
     | PP_250, `PP_250 txts -> k ctx txts
     | TP_354, `TP_354 txts -> k ctx txts
     | TP_334, `Other (334, txts) -> k ctx txts
-    | _, (#Request.t as v) -> Er (Unexpected_request v)
-    | _, (#Reply.t as v) -> Er (Unexpected_reply v)
+    | _, (#Request.t as v) -> Error (Unexpected_request (w, v))
+    | _, (#Reply.t as v) -> Error (Unexpected_reply (w, v))
 
   let encode_raw
     : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
     = fun (buf, off, len) k ctx ->
       Encoder.write (Bytes.sub_string buf off len) ctx.encoder ;
       k ctx len
+
+  let decode_raw
+    : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
+    = fun (buf, off, len) k ctx ->
+      let buf', off', len' = Decoder.peek_while_eol ctx.decoder in
+      let res = (min : int -> int -> int) len len' in
+      Bytes.blit buf' off' buf off res ;
+      k ctx res
 
   let decode
     : type i. i t -> (ctx -> i -> ('s, error) process) -> ctx -> ('s, error) process
@@ -109,8 +134,8 @@ module Send_mail_p = struct
       | Decoder.Ok v -> cast k ctx w v
       | Decoder.Read { buffer; off; len; continue; } ->
         let continue n = go (continue n) in
-        Rd { buffer; off; len; k= continue; }
-      | Decoder.Error { error; _ }  -> Er (Decoder error) in
+        Read { buffer; off; len; k= continue; }
+      | Decoder.Error { error; _ }  -> Error (Decoder error) in
     match is_request w with
     | true -> go (Request.Decoder.request ctx.decoder :> [ Request.t | Reply.t ] Decoder.state)
     | false -> go (Reply.Decoder.response ctx.decoder :> [ Request.t | Reply.t ] Decoder.state)
@@ -121,12 +146,13 @@ type 'a stream = unit -> 'a option
 module Send_mail_s = struct
   type 's t =
     { q: [ `q0 | `q1 | `q2 | `q3 | `q4 | `q5 | `q6 | `q7 | `q8 | `q9
-         | `q10 | `q11 | `q12 | `q13 | `q14 | `q15 | `q16 | `q17 | `q18 ]
+         | `q10 | `q11 | `q12 | `q13 | `q14 | `q15 | `q16 ]
     ; domain : Domain.t
     ; from : from
     ; recipients : recipient list
     ; mail : (bytes * int * int) stream
-    ; auth : Auth.authenticator option }
+    ; auth : Auth.authenticator option
+    ; logger : Rfc1869.t option }
   and from = Reverse_path.t
   and recipient = Forward_path.t
 end
@@ -134,98 +160,106 @@ end
 module State = State.Make(Send_mail_s)(Send_mail_p)
 
 let recv_from_auth auth = match Auth.Client.expect auth with
-  | 334 -> Send_mail_p.TP_334
-  | 235 -> Send_mail_p.PP_235
-  | 250 -> Send_mail_p.PP_250
-  | _ -> assert false
+  | Some Auth.Client.PP_235 -> Some Send_mail_p.PP_235
+  | Some Auth.Client.PP_250 -> Some Send_mail_p.PP_250
+  | Some Auth.Client.TP_334 -> Some Send_mail_p.TP_334
+  | None -> None
+
+let recv_to_auth : type a. a Send_mail_p.t -> int = function
+  | Send_mail_p.TP_334 -> 334
+  | Send_mail_p.PP_250 -> 250
+  | Send_mail_p.PP_235 -> 235
+  | _ -> Fmt.failwith "By duality, [recv_to_auth] should never receive something else"
+
+let ok x y = Ok (x, y)
+let ( $ ) f x = f x
 
 let rec transition
   : 's Send_mail_s.t -> State.event -> (State.action * 's Send_mail_s.t, Send_mail_p.error * 's Send_mail_s.t) result
-  = fun q e -> let open State in match q.q, e with
-  | `q0, Recv (PP_220, txts) ->
-    List.iter (Fmt.pr "220> %s\n%!") txts ;
-    Ok (Send (Helo, q.domain), { q with q= `q1 })
-  | `q1, Send Helo ->
-    Ok (Recv PP_250, { q with q= `q14 })
-  | `q14, Recv (PP_250, txts) ->
-    ( match q.auth with
-      | Some auth ->
-        let module Ext = (val Auth.client) in
-        let auth = Auth.Client.decode (250, txts) auth in
-        let ext = Ext.T auth in
-        Ok (Send (Auth, ext), { q with q= `q15; auth= Some auth })
-      | None -> transition { q with q= `q2 } e )
-  | `q15, Send Auth ->
-    ( match q.auth with
-      | Some auth ->
-        let recv = recv_from_auth auth in
-        Ok (Recv recv, { q with q= `q16; })
-      | None -> Error (Send_mail_p.Invalid_state, q) )
-  | `q16, Recv (TP_334, txts) ->
-    ( match q.auth with
-      | Some auth ->
-        let module Ext = (val Auth.client) in
-        let auth = Auth.Client.decode (334, txts) auth in
-        let ext = Ext.T auth in
-        Ok (Send (Auth, ext), { q with q= `q17; auth= Some auth })
-      | None -> Error (Send_mail_p.Invalid_state, q) )
-  | `q17, Send Auth ->
-    ( match q.auth with
-      | Some auth ->
-        let recv = recv_from_auth auth in
-        Ok (Recv recv, { q with q= `q18; })
-      | None -> Error (Send_mail_p.Invalid_state, q) )
-  | `q18, Recv (PP_235, txts) ->
-    ( match q.auth with
-      | Some auth ->
-        let module Ext = (val Auth.client) in
-        let auth = Auth.Client.decode (235, txts) auth in
-        transition { q with q= `q2; auth= Some auth } (Recv (PP_250, []))
-      | None -> Error (Send_mail_p.Invalid_state, q) )
-  | `q2, Recv (PP_250, txts) ->
-    ( match q.auth with
-      | None ->
-        List.iter (Fmt.pr "225> %s\n%!") txts ;
-        Ok (Send (Mail_from, (q.from, [])), { q with q= `q3 })
-      | Some auth when Auth.Client.is_authenticated auth ->
-        Ok (Send (Mail_from, (q.from, [])), { q with q= `q3 })
-      | Some _ -> Error (Send_mail_p.Invalid_state, q) )
-  | `q3, Send Mail_from ->
-    Ok (Recv PP_250, { q with q= `q4 })
-  | `q4, Recv (PP_250, txts) ->
-    List.iter (Fmt.pr "250> %s\n%!") txts ;
-    ( match q.recipients with
-      | [] -> Ok (Send (Data, ()), { q with q= `q5 })
-      | x :: r ->
-        Ok (Send (Rcpt_to, (x, [])), { q with q= `q6; recipients= r }))
-  | `q6, Send Rcpt_to ->
-    Ok (Recv PP_250, { q with q= `q4 }) (* loop *)
-  | `q5, Send Data ->
-    Ok (Recv TP_354, { q with q= `q7 })
-  | `q7, Recv (TP_354, txts) ->
-    List.iter (Fmt.pr "354> %s\n%!") txts ;
-    ( match q.mail () with
-      | None -> Ok (Send (Dot, ()), { q with q= `q8 })
-      | Some (buf, off, len) ->
-        Ok (Wr { buf; off; len; }, { q with q= `q9 }) )
-  | `q8, Send Dot ->
-    Ok (Recv PP_250, { q with q= `q10 })
-  | `q9, Wr w ->
-    Fmt.pr "Wrote %d byte(s).\n%!" w ;
-    ( match q.mail () with
-      | None -> Ok (Send (Dot, ()), { q with q= `q8 })
-      | Some (buf, off, len) ->
-        Ok (Wr { buf; off; len; }, { q with q= `q9 }) )
-  | `q10, Recv (PP_250, txts) ->
-    List.iter (Fmt.pr "250> %s\n%!") txts ;
-    Ok (Send (Quit, ()), { q with q= `q11 })
-  | `q11, Send Quit ->
-    Ok (Recv PP_221, { q with q= `q12 })
-  | `q12, Recv (PP_221, txts) ->
-    List.iter (Fmt.pr "221> %s\n%!") txts ;
-    Ok (Close, { q with q= `q13 })
-  | `q13, Close -> Ok (Close, { q with q= `q13 })
-  | _, _ -> Error (Send_mail_p.Invalid_state, q)
+  =
+  let module Auth_ext = (val Auth.extension) in
+
+  fun q e -> let open State in
+    ( match q.logger with
+      | None -> ()
+      | Some t ->
+        let Rfc1869.V (v, (_, (module Codes)), _) = Rfc1869.prj t in
+        match e with
+        | Recv (PP_250, txts) ->
+          ignore @@ Codes.decode (250, txts) v
+        | Recv (PP_220, txts) ->
+          ignore @@ Codes.decode (220, txts) v
+        | Recv (PP_221, txts) ->
+          ignore @@ Codes.decode (221, txts) v
+        | Recv (PP_235, txts) ->
+          ignore @@ Codes.decode (235, txts) v
+        | _ -> () ) ;
+
+    match q.q, e with
+    | `q14, Recv (PP_250, _ehlo :: exts) ->
+      let exts = List.map
+          (fun ext -> match Astring.String.cut ~sep:" " ext with
+             | Some (ext, args) -> (ext, args)
+             | None -> (ext, ""))
+          exts in
+      ( let q = match q.logger, List.assoc_opt Enhanced_status_codes.description.elho exts with
+            | Some t, Some args ->
+              let Rfc1869.V (v, (_, (module Codes)), ctor) = Rfc1869.prj t in
+              ( match Codes.ehlo v args with
+                | Ok v -> { q with logger= Some (ctor v) }
+                | Error _ -> q )
+            | Some _, None | None, Some _ | None, None -> { q with logger= None } in
+
+        match q.auth, List.assoc_opt Auth.description.elho exts with
+        | Some _, None | None, Some _ | None, None -> assert false (* TODO *)
+        | Some auth, Some args -> match Auth.Client.ehlo auth args with
+          | Ok auth -> ok $ send Auth (Auth_ext.T auth) $ { q with q= `q15; auth= Some auth; }
+          | Error err -> Error (Send_mail_p.Auth_error err, q) )
+    | `q15, Send Auth ->
+      ( match q.auth with
+        | None -> Error (Send_mail_p.Invalid_state, q)
+        | Some auth -> match recv_from_auth auth with
+          | Some v -> ok $ recv v $ { q with q= `q16; }
+          | None -> transition { q with q= `q2; auth= Some auth } (Recv (PP_250, [])) (* TODO: or error? *) )
+    | `q16, Recv (k, txts) ->
+      ( match q.auth with
+        | None -> Error (Send_mail_p.Invalid_state, q)
+        | Some auth -> match Auth.Client.decode (recv_to_auth k, txts) auth with
+          | Ok auth ->
+            if Auth.Client.is_authenticated auth
+            then transition { q with q= `q2; auth= Some auth; } (Recv (PP_250, []))
+            else ok $ send Auth (Auth_ext.T auth) $ { q with q= `q15; auth= Some auth; }
+          | Error err -> Error (Send_mail_p.Auth_error err, q))
+    | `q2, Recv (PP_250, _txts) ->
+      ( match q.auth with
+        | None ->
+          ok $ send Mail_from (q.from, []) $ { q with q= `q3 }
+        | Some auth when Auth.Client.is_authenticated auth ->
+          ok $ send Mail_from (q.from, []) $ { q with q= `q3 }
+        | Some _ -> Error (Send_mail_p.Invalid_state, q) )
+    | `q4, Recv (PP_250, _txts) ->
+      ( match q.recipients with
+        | []                     -> ok $ send Data ()         $ { q with q= `q5 }
+        | x :: r                 -> ok $ send Rcpt_to (x, []) $ { q with q= `q6; recipients= r } )
+    | `q7, Recv (TP_354, _txts) ->
+      ( match q.mail () with
+        | None                   -> ok $ send Dot ()          $ { q with q= `q8 }
+        | Some (buf, off, len)   -> ok $ write ~buf ~off ~len $ { q with q= `q9 } )
+    | `q9, Write _ ->
+      ( match q.mail () with
+        | None                   -> ok $ send Dot ()          $ { q with q= `q8 }
+        | Some (buf, off, len)   -> ok $ write ~buf ~off ~len $ { q with q= `q9 } )
+    | `q0, Recv (PP_220, _txts)  -> ok $ send Helo q.domain   $ { q with q= `q1 }
+    | `q1, Send Helo             -> ok $ recv PP_250          $ { q with q= `q14 }
+    | `q3, Send Mail_from        -> ok $ recv PP_250          $ { q with q= `q4 }
+    | `q8, Send Dot              -> ok $ recv PP_250          $ { q with q= `q10 }
+    | `q6, Send Rcpt_to          -> ok $ recv PP_250          $ { q with q= `q4 } (* loop *)
+    | `q5, Send Data             -> ok $ recv TP_354          $ { q with q= `q7 }
+    | `q10, Recv (PP_250, _txts) -> ok $ send Quit ()         $ { q with q= `q11 }
+    | `q11, Send Quit            -> ok $ recv PP_221          $ { q with q= `q12 }
+    | `q12, Recv (PP_221, _txts) -> ok $ Close                $ { q with q= `q13 }
+    | `q13, Close                -> ok $ Close                $ { q with q= `q13 }
+    | _, _                       -> Error (Send_mail_p.Invalid_state, q)
 
 type error = Send_mail_p.error
 
@@ -234,11 +268,15 @@ let pp_error = Send_mail_p.pp_error
 type 'x state = 'x Send_mail_s.t
 type 'x t = 'x State.t
 
-let make_state ~domain ~from ~recipients auth mail =
-  { Send_mail_s.q= `q0; domain; from; recipients; mail; auth; }
+let make_state ?logger ~domain ~from ~recipients auth mail =
+  let logger = match logger with
+    | Some src ->
+      let module Ext = (val (Enhanced_status_codes.extension src)) in Some (Ext.T false)
+    | None -> None in
+  { Send_mail_s.q= `q0; domain; from; recipients; mail; auth; logger; }
 
 let make state =
-  State.make ~i:state transition
+  State.make ~init:state transition
 
 let run
   : type s flow. s impl -> (flow, s) rdwr -> flow -> 'x t -> ctx -> (('x state, error) result, s) io
@@ -247,24 +285,20 @@ let run
     let return = impl.return in
 
     let rec go = function
-      | Rd { buffer; off; len; k; } ->
+      | Read { buffer; off; len; k; } ->
         rdwr.rd flow buffer off len >>= fun len ->
-        Fmt.epr "<<< %S.\n%!" (Bytes.sub_string buffer off len) ;
         go (k len)
-      | Wr { buffer; off; len; k; } ->
-        Fmt.epr ">>> %S.\n%!" (Bytes.sub_string buffer off len) ;
+      | Write { buffer; off; len; k; } ->
         rdwr.wr flow buffer off len >>= fun () -> go (k len)
-      | Rt v -> return (Ok v)
-      | Er err -> return (Error err) in
+      | Return v -> return (Ok v)
+      | Error err -> return (Rresult.R.error err) in
     let rec pp_220 = function
-      | Rd { buffer; off; len; k; } ->
+      | Read { buffer; off; len; k; } ->
         rdwr.rd flow buffer off len >>= fun len ->
-        Fmt.epr "<<< %S.\n%!" (Bytes.sub_string buffer off len) ;
         pp_220 (k len)
-      | Wr { buffer; off; len; k; } ->
-        Fmt.epr ">>> %S.\n%!" (Bytes.sub_string buffer off len) ;
+      | Write { buffer; off; len; k; } ->
         rdwr.wr flow buffer off len >>= fun () -> pp_220 (k len)
-      | Rt txts ->
+      | Return txts ->
         go (State.run state ctx (State.Recv (PP_220, txts)))
-      | Er err -> return (Error err) in
-    pp_220 Send_mail_p.(decode PP_220 (fun _ v -> Rt v) ctx)
+      | Error err -> return (Rresult.R.error err) in
+    pp_220 Send_mail_p.(decode PP_220 (fun _ v -> Return v) ctx)

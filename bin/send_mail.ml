@@ -21,7 +21,7 @@ let subject =
 
 let date =
   let now = Ptime_clock.now () in
-  Option.get_exn Mrmime.(Date.of_ptime ~zone:Date.Zone.GMT now)
+  Rresult.R.error_msg_to_invalid_arg Mrmime.(Date.of_ptime ~zone:Date.Zone.GMT now)
 
 let content_type =
   let open Mrmime in
@@ -55,7 +55,6 @@ let header_stream =
   (fun () -> match stream () with
      | Some s ->
        let ln = String.length s in
-       Fmt.epr ">>> %S.\n%!" s ;
        Bytes.blit_string s 0 bf 0 ln ;
        Some (bf, 0, ln)
      | None -> None)
@@ -113,16 +112,21 @@ let to_path mailbox =
 let to_reverse_path x = Some (to_path x)
 let to_forward_path x = Colombe.Forward_path.Forward_path (to_path x)
 
+let pp_header = Logs_fmt.pp_header
+let () = Fmt_tty.setup_std_outputs ~style_renderer:`Ansi_tty ~utf_8:true ()
+let () = Logs.set_reporter @@ Logs_fmt.reporter ~pp_header ~app:Fmt.stdout ~dst:Fmt.stderr ()
+
 let run () =
   let open Lwt.Infix in
 
   Lwt_client.run
+    ~logger:(Logs.src_log (Logs.Src.create ~doc:"sendmail" "sendmail"))
     ~hostname:(Domain_name.of_string_exn "smtp.gmail.com") ~port:465
     ~domain:Colombe.Domain.(v domain [ a "gmail"; a "com" ])
     ~authenticator:X509.Authenticator.null
     ~from:(to_reverse_path romain_calascibetta)
     ~recipients:[ to_forward_path romain_calascibetta ]
-    (Some { Auth.Client.mechanism= PLAIN; q= `q0; username= "romain.calascibetta"; password= "LOLILOL"; })
+    (Some { Auth.Client.mechanism= PLAIN; q= `q0; username= "romain.calascibetta"; password= ""; })
     (concat_stream header_stream (quoted_printable_stream_of_ic stdin))
   >>= function
   | Ok () -> Lwt.return ()

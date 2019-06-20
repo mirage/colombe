@@ -1,31 +1,25 @@
-open Lwt.Infix
 open Colombe
 open Send_mail
 
 let ( <.> ) f g = fun x -> f (g x)
 
-module Lwt_scheduler = Sigs.Make(Lwt)
-
-let lwt_bind x f =
-  let open Lwt.Infix in
-  let open Lwt_scheduler in
-  inj (prj x >>= (prj <.> f))
+module Unix_scheduler = Sigs.Make(type 'a t = 'a)
 
 let lwt =
-  { Sigs.bind= lwt_bind
-  ; return= (fun x -> Lwt_scheduler.inj (Lwt.return x)) }
+  { Sigs.bind= (fun x f -> f (Unix_scheduler.prj x))
+  ; return= Unix_scheduler.inj }
 
 type flow =
-  { ic : Lwt_io.input_channel
-  ; oc : Lwt_io.output_channel }
+  { ic : Unix.file_descr
+  ; oc : Unix.file_descr }
 
 let rdwr =
   { Sigs.rd= (fun { ic; _ } bytes off len ->
-        let res = Lwt_io.read_into ic bytes off len in
-        Lwt_scheduler.inj res)
+        let res = Unix.read ic bytes off len in
+        Unix_scheduler.inj res)
   ; wr= (fun { oc; _ } bytes off len ->
-        let res = Lwt_io.write_from_exactly oc bytes off len in
-        Lwt_scheduler.inj res) }
+        let res = Unix.write bytes off len in
+        Unix_scheduler.inj res) }
 
 type error = Send_mail.error
 

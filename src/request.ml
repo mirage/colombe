@@ -68,10 +68,8 @@ let pp ppf = function
   | `Reset -> Fmt.string ppf "Reset"
   | `Quit -> Fmt.string ppf "Quit"
   | `Extension ext ->
-    let Rfc1869.V (_, m, _) = Rfc1869.prj ext in
-    let name = (match m with Rfc1869.As_client (desc, _) -> desc.Rfc1869.name
-                           | Rfc1869.As_server (desc, _) -> desc.Rfc1869.name) in
-    Fmt.pf ppf "(Extension %s)" name
+    let Rfc1869.V (_, (desc, _), _) = Rfc1869.prj ext in
+    Fmt.pf ppf "(Extension %s)" desc.name
 
 module Decoder = struct
   include Decoder
@@ -93,19 +91,21 @@ module Decoder = struct
   let () = Hashtbl.add trie "QUIT" `Quit
 
   let extensions : (string, Rfc1869.t) Hashtbl.t = Hashtbl.create 16
+  (* XXX(dinosaure): when we do [Rfc1869.inj], we must populate this hashtbl. *)
 
   let command decoder =
     let raw, off, len = peek_while_eol_or_space decoder in
     let command = match Bytes.unsafe_get raw (off + len - 1) with
       | ' ' -> Bytes.sub_string raw off (len - 1)
       | '\n' -> Bytes.sub_string raw off (len - 2)
-      | _ -> assert false (* end with LF or SPACE *) in
+      | _ -> assert false (* end with LF or SPACE or leave with an error *) in
     match Hashtbl.find trie command with
     | command ->
       decoder.pos <- decoder.pos + len ; command
     | exception Not_found -> match Hashtbl.find extensions command with
       | ext ->
-      decoder.pos <- decoder.pos + len ; `Extension (command, ext)
+        decoder.pos <- decoder.pos + len
+      ; `Extension (command, ext)
       | exception Not_found -> leave_with decoder (Invalid_command command)
 
   let hello (decoder : decoder) =
@@ -284,17 +284,16 @@ module Encoder = struct
     | `Quit -> write "QUIT" encoder ; crlf encoder
     | `Extension ext ->
       match Rfc1869.prj ext with
-      | Rfc1869.V (v, Rfc1869.As_client (_, w), _) ->
-        let module Ext = (val w) in
+      | Rfc1869.V (v, (_, m), _) ->
+        let module Ext = (val m) in
         ( match Ext.encode v with
           | verb, Some args ->
-            write (verb :> string) encoder
+            write verb encoder
           ; write " " encoder
           ; write args encoder
           ; crlf encoder
           | verb, None ->
-            write (verb :> string) encoder ; crlf encoder )
-      | _ -> assert false
+            write verb encoder ; crlf encoder )
 
   let request command encoder =
     let k encoder = request command encoder ; Ok in

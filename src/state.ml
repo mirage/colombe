@@ -1,14 +1,14 @@
 type ('s, 'error) process =
-  | Rd of { buffer : bytes
-          ; off: int
-          ; len: int
-          ; k: int -> ('s, 'error) process }
-  | Wr of { buffer : bytes
-          ; off: int
-          ; len: int
-          ; k: int -> ('s, 'error) process }
-  | Rt of 's
-  | Er of 'error
+  | Read of { buffer : bytes
+            ; off : int
+            ; len : int
+            ; k : int -> ('s, 'error) process }
+  | Write of { buffer : bytes
+             ; off : int
+             ; len : int
+             ; k : int -> ('s, 'error) process }
+  | Return of 's
+  | Error of 'error
 
 type ctx =
   { encoder : Encoder.encoder
@@ -27,7 +27,13 @@ module type PROTOCOL = sig
   val encode : ('o t * 'o) -> (ctx -> ('s, error) process) -> ctx -> ('s, error) process
 
   val encode_raw
-    : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
+    : (bytes * int * int) ->
+      (ctx -> int -> ('s, error) process) ->
+      ctx -> ('s, error) process
+  val decode_raw
+    : (bytes * int * int) ->
+      (ctx -> int -> ('s, error) process) ->
+      ctx -> ('s, error) process
 end
 
 module Make (State : Sigs.FUNCTOR) (Protocol : PROTOCOL) = struct
@@ -37,31 +43,43 @@ module Make (State : Sigs.FUNCTOR) (Protocol : PROTOCOL) = struct
     | Accept
     | Recv : 'x Protocol.t * 'x -> event
     | Send : 'x Protocol.t -> event
-    | Wr of int
+    | Write of int
+    | Read of int
     | Close
 
   type action =
     | Send : 'x Protocol.t * 'x -> action
     | Recv : 'x Protocol.t -> action
-    | Wr of { buf : bytes; off : int; len : int; }
+    | Write of { buf : bytes; off : int; len : int; }
+    | Read of { buf : bytes; off : int; len : int; }
     | Close
 
+  let send : 'x Protocol.t -> 'x -> action = fun k v -> Send (k, v)
+  let recv : 'x Protocol.t -> action = fun v -> Recv v
+  let write ~buf ~off ~len = Write { buf; off; len; }
+  let read ~buf ~off ~len = Read { buf; off; len; }
+
   type 's t =
-    { i : 's state
-    ; t : 's state -> event -> (action * 's state, Protocol.error * 's state) result }
+    { init : 's state
+    ; trans : 's state -> event -> (action * 's state, Protocol.error * 's state) result }
+
+  type 's transition = 's state -> event -> (action * 's state, Protocol.error * 's state) result
 
   let run t ctx e =
-    let rec go ctx q e = match t.t q e with
+    let rec go ctx q e = match t.trans q e with
       | Ok (Recv w, q') ->
         Protocol.decode w (fun ctx v -> go ctx q' (Recv (w, v))) ctx
       | Ok (Send (w, v), q') ->
         Protocol.encode (w, v) (fun ctx -> go ctx q' (Send w)) ctx
-      | Ok (Close, q') -> Rt q'
-      | Ok (Wr { buf; off; len; }, q') ->
+      | Ok (Close, q') -> Return q'
+      | Ok (Write { buf; off; len; }, q') ->
         Protocol.encode_raw (buf, off, len)
-          (fun ctx len -> go ctx q' (Wr len)) ctx
-      | Error (err, _) -> Er err in
-    go ctx t.i e
+          (fun ctx len -> go ctx q' (Write len)) ctx
+      | Ok (Read { buf; off; len; }, q') ->
+        Protocol.decode_raw (buf, off, len)
+          (fun ctx len -> go ctx q' (Read len)) ctx
+      | Error (err, _) -> Error err in
+    go ctx t.init e
 
-  let make ~i t = { i; t; }
+  let make ~init trans = { init; trans; }
 end

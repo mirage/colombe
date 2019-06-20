@@ -11,6 +11,7 @@ type 'x state
 type 'x t
 
 val make_state :
+  ?logger:(module Logs.LOG) ->
   domain:Domain.t ->
   from:Reverse_path.t ->
   recipients:Forward_path.t list ->

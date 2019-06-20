@@ -1,20 +1,13 @@
 type verb = string
 type txts = int * string list
 
-module type I = sig
+module type CLIENT = sig
   type t
+  type error
 
-  val decode : verb -> string option -> t -> t
-  val encode : t -> txts
-  val mail_from : t -> Reverse_path.t * (string * string option) list -> t
-  val rcpt_to : t -> Forward_path.t * (string * string option) list -> t
-end
-
-module type O = sig
-  type t
-
+  val ehlo : t -> string -> (t, error) result
   val encode : t -> verb * string option
-  val decode : txts -> t -> t
+  val decode : txts -> t -> (t, error) result
   val mail_from : t -> Reverse_path.t -> (string * string option) list
   val rcpt_to : t -> Forward_path.t -> (string * string option) list
 end
@@ -28,7 +21,8 @@ module Make (Functor : Sigs.FUNCTOR) = struct
   end
 
   type 'a extension = (module S with type x = 'a)
-  type instance = V : 'a * 'a Functor.t  * ('a -> t) -> instance
+  type 'a ctor = 'a -> t
+  type instance = V : 'a * 'a Functor.t  * 'a ctor -> instance
 
   let handlers = Hashtbl.create 16
 
@@ -70,14 +64,7 @@ type description =
   ; elho : string
   ; verb : verb list }
 
-module Witness = struct
-  type 'a t =
-    | As_client : description * (module O with type t = 'o) -> 'o t
-    | As_server : description * (module I with type t = 'i) -> 'i t
-end
+module W0 = struct type 'a t = description * (module CLIENT with type t = 'a) end
+include Make(W0)
 
-include Make(Witness)
-
-type 'a w = 'a Witness.t =
-  | As_client : description * (module O with type t = 'o) -> 'o w
-  | As_server : description * (module I with type t = 'i) -> 'i w
+type 'a client = 'a W0.t
