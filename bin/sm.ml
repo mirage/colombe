@@ -135,3 +135,20 @@ let run () =
     Lwt.return ()
 
 let () = Lwt_main.run (run ())
+
+open Cmdliner
+
+let domain_name =
+  let parser = Domain_name.of_string ~hostname:true (* or [false]? *) in
+  let pp = Domain_name.pp in
+  Arg.conv ~docv:"<domain-name>" (parser, pp)
+
+let domain =
+  let parser = Colombe.Domain.of_string in
+  let pp = Colombe.Domain.pp in
+  Arg.conv ~docv:"<domain>" (parser, pp)
+
+let mailbox =
+  let parser = Mrmime.Mailbox.of_string in
+  let pp = Mrmime.Mailbox.pp in
+  Arg.conv ~docv:"<mailbox>" (parser, pp)

@@ -5,7 +5,7 @@ services:
 - docker
 env:
   global:
-  - PINS="colombe:."
+  - PINS="colombe:. sendmail:. sendmail-lwt:."
   - DISTRO="debian-stable"
   - TESTS=true
   matrix:
