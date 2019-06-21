@@ -1,3 +1,3 @@
 (executable
  (name sm)
- (libraries sendmail-lwt mrmime fmt.tty logs.fmt ptime.clock.os))
+ (libraries sendmail-lwt mrmime cmdliner fmt.tty logs.fmt ptime.clock.os))

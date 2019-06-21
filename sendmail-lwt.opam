@@ -28,4 +28,6 @@ depends: [
   "domain-name"
   "lwt"
   "tls"
+  "alcotest"   {with-test}
+  "crowbar"    {with-test}
 ]
