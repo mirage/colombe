@@ -19,6 +19,7 @@ build: [
 
 pin-depends: [
   [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
+  [ "hxd.dev" "git+https://github.com/dinosaure/hxd.git" ]
 ]
 
 depends: [
@@ -31,6 +32,7 @@ depends: [
   "logs"
   "base64"
   "rresult"
+  "hxd"
   "domain-name" {>= "0.2.1"}
   "alcotest"   {with-test}
   "crowbar"    {with-test}

@@ -1,4 +1,8 @@
 module Client = struct
+  let src = Logs.Src.create "starttls" ~doc:"logs starttls's events"
+  let hxd_config = Hxd.O.default
+  module Log = (val Logs.src_log src : Logs.LOG)
+
   type t =
     { q : q
     ; fiber : fiber }
@@ -9,6 +13,7 @@ module Client = struct
     | Send : Tls.Engine.state -> send state
     | Wait : Tls.Engine.state -> wait state
     | Close : Tls.Engine.state -> close state
+    | Send_failure : Tls.Engine.failure * Tls.Engine.state -> send state
   and q = V : 'a * 'a state -> q
   and handshake = Cstruct.t
   and send = Cstruct.t (* Cstruct_cap? *)
@@ -20,6 +25,7 @@ module Client = struct
     | Unexpected_application_data
     | Unexpected_payload
     | Unexpected_SMTP_response of { code : int; txts : string list }
+    | End_of_stream
 
   let pp_error ppf = function
     | Unexpected_arguments -> Fmt.string ppf "Unexpected_arguments"
@@ -28,6 +34,7 @@ module Client = struct
     | Unexpected_SMTP_response { code; txts; }->
       Fmt.pf ppf "(Unexpected_SMTP_response (@[<1>code: %d,@ txts= @[<hov>%a@]@]))"
         code Fmt.(Dump.list string) txts
+    | End_of_stream -> Fmt.string ppf "End_of_stream"
 
   let ehlo t args =
     if args <> ""
@@ -36,14 +43,18 @@ module Client = struct
 
   let encode t = match t.q with
     | V (_, Initialization _) ->
-      Fmt.epr ">>> STARTTLS\n%!" ;
+      Log.app (fun m -> m "Send STARTTLS") ;
       Colombe.Rfc1869.Request { verb= "STARTTLS"; args= [] }
     | V (handshake, Send_handshake _) ->
-      Fmt.epr ">>> Send handshake.\n%!" ;
+      Log.app (fun m -> m "Send TLS handshake") ;
       let buf = Cstruct.to_bytes handshake in
       Colombe.Rfc1869.Payload { buf; off= 0; len= Bytes.length buf }
     | V (send, Send _) ->
-      Fmt.epr ">>> Send application data\n%!" ;
+      Log.app (fun m -> m "Send application data") ;
+      let buf = Cstruct.to_bytes send in
+      Colombe.Rfc1869.Payload { buf; off= 0; len= Bytes.length buf }
+    | V (send, Send_failure (failure, _)) ->
+      Log.err (fun m -> m "Send TLS failure (%s)" (Tls.Engine.string_of_failure failure)) ;
       let buf = Cstruct.to_bytes send in
       Colombe.Rfc1869.Payload { buf; off= 0; len= Bytes.length buf }
     | V (_, Wait_handshake _) -> assert false
@@ -63,32 +74,37 @@ module Client = struct
         | Colombe.State.Read _ | Return _ | Error _ ->
           failwith "Inner process of STARTTLS flow MUST start with a Write operation"
         | Colombe.State.Write { buffer; off; len; k= _; } ->
-          Fmt.epr "Start fiber with: %S\n%!" (Bytes.sub_string buffer off len) ;
+          Log.app (fun m -> m "Fiber start with: @[<hov>%a@]" (Hxd_string.pp hxd_config) (Bytes.sub_string buffer off len)) ;
 
           match Tls.Engine.send_application_data state [ Cstruct.of_bytes buffer ~off ~len ] with
           | Some (state, send) -> { t with q= V (send, Send state) }
           | None -> t (* XXX(dinosaure): [None] is an error? *) )
     | V (_, Send_handshake state) ->
       (* XXX(dinosaure): hmmhmm, if we look into [`q5] of [Sendmail_tls], we
-         possible reach end of handshake even if we just sended TLS-data. In this case, [handle] should update
-         internal state as [Wait_handshake] does. *)
+         possible reach end of handshake even if we just sended TLS-data. In
+         this case, [handle] should update internal state as [Wait_handshake]
+         does. It's an undefined behavior. *)
       { t with q= V ((), Wait_handshake state) }
     | V (_, Send state) ->
       let Fiber fiber = t.fiber in
 
       let fiber = match fiber with
-        | Colombe.State.Write { len; k; _ } -> Fmt.epr "Consumed %d byte(s) of fiber\n%!" len ; k len
+        | Colombe.State.Write { len; k; _ } ->
+          Log.app (fun m -> m "%d byte(s) consumed on fiber" len) ;
+          k len (* XXX(dinosaure): this is on top of this assumption:
+                   [ocaml-tls] consumes entirely the fiber. *)
         | _ -> fiber in
       let q = match fiber with
         | Colombe.State.Read _ ->
-          Fmt.epr "Fiber wants to read\n%!" ;
+          Log.app (fun m -> m "Fiber wants to read") ;
           V ((), Wait state)
-        | Colombe.State.Write { buffer; off; len; k= _ } ->
-          Fmt.epr "Fiber wants to write %S\n%!" (Bytes.sub_string buffer off len) ;
+        | Write { buffer; off; len; k= _ } ->
+          Log.app (fun m -> m "Fiber wants to write: @[<hov>%a@]" (Hxd_string.pp hxd_config) (Bytes.sub_string buffer off len)) ;
           V (Cstruct.of_bytes ~off ~len buffer, Send state)
-        | Colombe.State.Return _ ->
-          V ((), Close state)
-        | Error _ -> assert false in
+        | Return _ | Error _ ->
+          (* XXX(dinosaure): any [Return] or [Error] wants to notify the server
+             to close the connection. *)
+          V ((), Close state) in
       { fiber= Fiber fiber; q }
     | _ -> t
 
@@ -102,8 +118,10 @@ module Client = struct
     | V (send, Send _) ->
       let buf = Cstruct.to_bytes send in
       Some Colombe.Rfc1869.(Send (Payload { buf; off= 0; len= Bytes.length buf; }))
+    | V (send, Send_failure _) ->
+      let buf = Cstruct.to_bytes send in
+      Some Colombe.Rfc1869.(Send (Payload { buf; off= 0; len= Bytes.length buf; }))
     | V (_, Wait_handshake _) ->
-      Fmt.epr "starttls> waiting.\n%!" ;
       Some Colombe.Rfc1869.Waiting_payload
     | V (_, Wait _) ->
       Some Colombe.Rfc1869.Waiting_payload
@@ -117,16 +135,22 @@ module Client = struct
       then Ok (handle { t with q= V ((), Wait_handshake state) }) (* here, a dragoon ... *)
       else Ok { t with q= V ((), Wait_handshake state) }
     | `Ok (`Ok state, `Response (Some send), _) ->
-      Fmt.epr "tls> Send handshake.\n%!" ;
       Ok { t with q= V (send, Send_handshake state) }
-    | `Ok (`Eof, _, _) | `Ok (`Alert _, _, _) | `Fail _ -> assert false (* TODO *)
+    | `Ok (`Eof, _, _) -> Error End_of_stream
+    | `Ok (`Alert alert, _, _) ->
+      Log.err (fun m -> m "Retrieve an alert: %s" (Tls.Packet.alert_type_to_string alert)) ;
+      let state, send = Tls.Engine.send_close_notify state in
+      Ok { t with q= V (send, Send state) }
+    (* XXX(dinosaure): check this branch! *)
+    | `Fail (failure, `Response send) ->
+      Ok { t with q= V (send, Send_failure (failure, state)) }
 
   [@@@warning "-27"]
 
   let handle_tls t ~buf ~off ~len state =
     match Tls.Engine.handle_tls state (Cstruct.of_bytes buf ~off ~len) with
     | `Ok (`Ok state, `Response None, `Data (Some data)) ->
-      Fmt.epr "Recv %S\n%!" (Cstruct.to_string data) ;
+      Log.app (fun m -> m "Receive from the server: @[<hov>%a@]" (Hxd_string.pp hxd_config) (Cstruct.to_string data)) ;
 
       let Fiber fiber = t.fiber in
 
@@ -136,18 +160,24 @@ module Client = struct
           Cstruct.blit_to_bytes data 0 buffer off len ;
           go (Cstruct.shift data len) (k len)
         | Write { buffer; off; len; k= _; } as fiber ->
-          Fmt.epr "Send fiber %S\n%!" (Bytes.sub_string buffer off len) ;
+          Log.app (fun m -> m "Fiber wants to write: @[<hov>%a@]" (Hxd_string.pp hxd_config) (Bytes.sub_string buffer off len)) ;
 
           ( match Tls.Engine.send_application_data state [ Cstruct.of_bytes ~off ~len buffer ] with
             | Some (state, send) ->
               Ok { fiber= Fiber fiber; q= V (send, Send state); }
             | None -> assert false )
         | Return _ as fiber ->
-          Fmt.epr "Notify close\n%!" ;
+          Log.app (fun m -> m "Notify to close the process") ;
 
           let state, send = Tls.Engine.send_close_notify state in
           Ok { fiber= Fiber fiber; q= V (send, Send state) }
-        | Error _ -> assert false in
+        | Error _ as fiber ->
+          (* XXX(dinosaure): [fiber] should take care to [QUIT] properly.
+             [STARTTLS] should not introspect [fiber] first, then [QUIT] it
+             outside the scope of the already negociated TLS flow. *)
+          Log.err (fun m -> m "Fiber returns an error, notify to close the process") ;
+          let state, send = Tls.Engine.send_close_notify state in
+          Ok { fiber= Fiber fiber; q= V (send, Send state) } in
       go data fiber
 
     | `Ok (`Ok state, `Response (Some send), `Data None) ->
@@ -160,27 +190,29 @@ module Client = struct
           let len = min len (Cstruct.len data) in
           Cstruct.blit_to_bytes data 0 buffer off len ;
           go (Cstruct.shift data len) (k len)
-        | (Write _ | Return _) as fiber ->
-          Ok { fiber= Fiber fiber; q= V (send, Send state) }
-        | Error _ -> assert false in
+        | (Write _ | Return _ | Error _) as fiber ->
+          Ok { fiber= Fiber fiber; q= V (send, Send state) } in
       go data fiber
 
     | `Ok (`Ok state, `Response None, `Data None) ->
       Ok { t with q= V ((), Wait state) }
-    | `Ok (`Eof, _, _) -> Fmt.epr "EOF dealed\n%!" ; assert false
-    | `Ok (`Alert _, _, _) -> Fmt.epr "Alert reached\n%!" ; assert false
+    | `Ok (`Eof, _, _) -> Error End_of_stream
+    | `Ok (`Alert alert, _, _) ->
+      Log.err (fun m -> m "Retrieve an alert: %s" (Tls.Packet.alert_type_to_string alert)) ;
+      let state, send = Tls.Engine.send_close_notify state in
+      Ok { t with q= V (send, Send state) }
+    (* XXX(dinosaure): check this branch! *)
     | `Fail (failure, `Response send) ->
-      Fmt.epr "Failure reached: %s\n%!" (Tls.Engine.string_of_failure failure) ;
-      assert false
+      Ok { t with q= V (send, Send_failure (failure, state)) }
 
   let decode resp t = match resp, t.q with
     | Colombe.Rfc1869.Response { code= 220; _ }, V (handshake, Initialization state) ->
       Ok { t with q= V (handshake, Send_handshake state) }
     | Payload { buf; off; len; }, V (_, Send_handshake state) ->
-      Fmt.epr "<<< Recv handshake (after send).\n%!" ;
+      Log.app (fun m -> m "Receive TLS handshake (client sended handshake)") ;
       handle_handshake t ~buf ~off ~len state
     | Payload { buf; off; len; }, V (_, Wait_handshake state) ->
-      Fmt.epr "<<< Recv handshake (after waiting).\n%!" ;
+      Log.app (fun m -> m "Receive TLS handshake (client expected handshake)") ;
       handle_handshake t ~buf ~off ~len state
     | Payload { buf; off; len; }, V (_, Send state) ->
       handle_tls t ~buf ~off ~len state
@@ -190,6 +222,8 @@ module Client = struct
     | Response { code; txts; }, _ -> Error (Unexpected_SMTP_response { code; txts; })
     | Payload _, V (_, Initialization _) -> Error Unexpected_payload
     | Payload _, V (_, Close _) -> Error Unexpected_payload
+    | Payload { buf; off; len; }, V (_, Send_failure (_, state)) ->
+      Ok { t with q= V ((), Close state) } (* XXX(dinosaure): need to check! *)
 
   let mail_from _t _mail_from = []
   let rcpt_to _t _rcpt_to = []
