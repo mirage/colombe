@@ -18,10 +18,16 @@ module Client = struct
   type error =
     | Unexpected_arguments
     | Unexpected_application_data
+    | Unexpected_payload
+    | Unexpected_SMTP_response of { code : int; txts : string list }
 
   let pp_error ppf = function
     | Unexpected_arguments -> Fmt.string ppf "Unexpected_arguments"
     | Unexpected_application_data -> Fmt.string ppf "Unexpected_application_data"
+    | Unexpected_payload -> Fmt.string ppf "Unexpected_payload"
+    | Unexpected_SMTP_response { code; txts; }->
+      Fmt.pf ppf "(Unexpected_SMTP_response (@[<1>code: %d,@ txts= @[<hov>%a@]@]))"
+        code Fmt.(Dump.list string) txts
 
   let ehlo t args =
     if args <> ""
@@ -144,9 +150,23 @@ module Client = struct
         | Error _ -> assert false in
       go data fiber
 
-    | `Ok (`Ok state, `Response (Some send), `Data None) -> assert false
-    | `Ok (`Ok state, `Response (Some send), `Data (Some data)) -> assert false
-    | `Ok (`Ok state, `Response None, `Data None) -> assert false
+    | `Ok (`Ok state, `Response (Some send), `Data None) ->
+      Ok { t with q= V (send, Send state) }
+    | `Ok (`Ok state, `Response (Some send), `Data (Some data)) ->
+      let Fiber fiber = t.fiber in
+
+      let rec go data = function
+        | Colombe.State.Read { buffer; off; len; k; } ->
+          let len = min len (Cstruct.len data) in
+          Cstruct.blit_to_bytes data 0 buffer off len ;
+          go (Cstruct.shift data len) (k len)
+        | (Write _ | Return _) as fiber ->
+          Ok { fiber= Fiber fiber; q= V (send, Send state) }
+        | Error _ -> assert false in
+      go data fiber
+
+    | `Ok (`Ok state, `Response None, `Data None) ->
+      Ok { t with q= V ((), Wait state) }
     | `Ok (`Eof, _, _) -> Fmt.epr "EOF dealed\n%!" ; assert false
     | `Ok (`Alert _, _, _) -> Fmt.epr "Alert reached\n%!" ; assert false
     | `Fail (failure, `Response send) ->
@@ -156,17 +176,20 @@ module Client = struct
   let decode resp t = match resp, t.q with
     | Colombe.Rfc1869.Response { code= 220; _ }, V (handshake, Initialization state) ->
       Ok { t with q= V (handshake, Send_handshake state) }
-    | Colombe.Rfc1869.Payload { buf; off; len; }, V (_, Send_handshake state) ->
+    | Payload { buf; off; len; }, V (_, Send_handshake state) ->
       Fmt.epr "<<< Recv handshake (after send).\n%!" ;
       handle_handshake t ~buf ~off ~len state
-    | Colombe.Rfc1869.Payload { buf; off; len; }, V (_, Wait_handshake state) ->
+    | Payload { buf; off; len; }, V (_, Wait_handshake state) ->
       Fmt.epr "<<< Recv handshake (after waiting).\n%!" ;
       handle_handshake t ~buf ~off ~len state
-    | Colombe.Rfc1869.Payload { buf; off; len; }, V (_, Send state) ->
+    | Payload { buf; off; len; }, V (_, Send state) ->
       handle_tls t ~buf ~off ~len state
-    | Colombe.Rfc1869.Payload { buf; off; len; }, V (_, Wait state) ->
+    | Payload { buf; off; len; }, V (_, Wait state) ->
       handle_tls t ~buf ~off ~len state
-    | _, _ -> assert false
+    | Response _, V (handshake, Initialization state) -> assert false (* server sended an other SMTP code *)
+    | Response { code; txts; }, _ -> Error (Unexpected_SMTP_response { code; txts; })
+    | Payload _, V (_, Initialization _) -> Error Unexpected_payload
+    | Payload _, V (_, Close _) -> Error Unexpected_payload
 
   let mail_from _t _mail_from = []
   let rcpt_to _t _rcpt_to = []
