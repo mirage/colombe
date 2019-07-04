@@ -31,6 +31,7 @@ depends: [
   "logs"
   "base64"
   "rresult"
+  "domain-name" {>= "0.2.1"}
   "alcotest"   {with-test}
   "crowbar"    {with-test}
 ]
