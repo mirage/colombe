@@ -3,6 +3,8 @@ type decoder =
   ; mutable pos : int
   ; mutable max : int }
 
+val pp : decoder Fmt.t
+
 val io_buffer_size : int
 val decoder : unit -> decoder
 val decoder_from : string -> decoder

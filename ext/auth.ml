@@ -4,11 +4,9 @@
 module Client = struct
   type mechanism =
     | PLAIN
-    | CRAM_MD5
 
   let pp_mechanism ppf = function
     | PLAIN -> Fmt.string ppf "PLAIN"
-    | CRAM_MD5 -> Fmt.string ppf "CRAM_MD5"
 
   let mechanism_to_string = Fmt.to_to_string pp_mechanism
 
@@ -46,36 +44,38 @@ module Client = struct
 
   let encode t = match t.q, t.mechanism with
     | `q0, PLAIN ->
-      "AUTH", Some "PLAIN"
+      Colombe.Rfc1869.Request { verb= "AUTH"; args= [ "PLAIN" ] }
     | `q1_plain, PLAIN ->
       let combined = Fmt.strf "\000%s\000%s" t.username t.password in (* lol *)
-      Base64.encode_exn ~pad:true combined, None
+      let buf = Base64.encode_exn ~pad:true combined in
+      Colombe.Rfc1869.Payload { buf= Bytes.unsafe_of_string (buf ^"\r\n"); off= 0; len= String.length buf + 2 }
     | _, _ -> assert false
 
-  type response = TP_334 | PP_250 | PP_235
+  let handle t = t
 
-  let expect t = match t.q with
-    | `q0 -> Some TP_334
-    | `q1_plain -> Some PP_235
+  let action t = match t.q with
+    | `q0 -> Some (Colombe.Rfc1869.Recv_code 334)
+    | `q1_plain -> Some (Colombe.Rfc1869.Recv_code 235)
     | `authenticated -> None
 
-  let decode txts t = match t.q, txts with
-    | `q0, (504, _txts) ->
+  let decode resp t = match t.q, resp with
+    | `q0, Colombe.Rfc1869.Response { code= 504; _ } ->
       Error (Unsupported_mechanism t.mechanism)
-    | `q0, (538, _txts) ->
+    | `q0, Colombe.Rfc1869.Response { code= 538; _ } ->
       Error Encryption_required
-    | `q0, (534, _txts) ->
+    | `q0, Colombe.Rfc1869.Response { code= 534; _ } ->
       assert (t.mechanism = PLAIN) ;
       Error (Weak_mechanism t.mechanism)
-    | `q0, (334, _txts) ->
+    | `q0, Colombe.Rfc1869.Response { code= 334; _ }->
       (* XXX(dinosaure): here, [_txts] should be empty. *)
       Ok { t with q= `q1_plain }
-    | `q1_plain, (235, _txts) -> Ok { t with q= `authenticated }
-    | `q1_plain, (500, _txts) ->
+    | `q1_plain, Colombe.Rfc1869.Response { code= 235; _ } ->
+      Ok { t with q= `authenticated }
+    | `q1_plain, Colombe.Rfc1869.Response { code= 500; _ } ->
       Error Line_too_long
-    | `q1_plain, (501, _txts) ->
+    | `q1_plain, Colombe.Rfc1869.Response { code= 501; _ } ->
       Error Authentication_rejected
-    | `q1_plain, (535, _txts) ->
+    | `q1_plain, Colombe.Rfc1869.Response { code= 535; _ } ->
       Error Authentication_failed
     | _ -> Error Invalid_state
 
@@ -92,5 +92,13 @@ let description : Colombe.Rfc1869.description =
   { name= "Authentication"
   ; elho= "AUTH"
   ; verb= [ "AUTH" ] }
+
+let plain = Client.PLAIN
+
+let make ?(mechanism= Client.PLAIN) ~username password =
+  { Client.mechanism
+  ; q= `q0
+  ; username
+  ; password }
 
 let extension = Colombe.Rfc1869.inj (description, (module Client))

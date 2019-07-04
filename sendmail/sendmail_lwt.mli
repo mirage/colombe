@@ -4,7 +4,7 @@ val pp_error : error Fmt.t
 
 val run :
   ?logger:(module Logs.LOG) ->
-  hostname:Domain_name.t ->
+  hostname:'a Domain_name.t ->
   ?port:int ->
   domain:Colombe.Domain.t ->
   authenticator:X509.Authenticator.a ->
