@@ -4,7 +4,14 @@
   (modules sendmail)
   (libraries colombe
              colombe.auth
+             colombe.mime
              colombe.enhanced_status_codes))
+
+(library
+  (name sendmail_tls)
+  (public_name sendmail.tls)
+  (modules sendmail_tls)
+  (libraries hxd.string colombe.starttls sendmail))
 
 (library
   (name sendmail_lwt)

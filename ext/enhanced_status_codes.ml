@@ -20,8 +20,9 @@ module Client (L : Logs.LOG) = struct
 
   let ehlo _ _ = (* assert (args = ""); *) Ok true
 
-  let encode _ =
-    Fmt.failwith "CODES extension should never encode something"
+  let action _ = assert false
+  let encode _ = assert false
+  let handle _ = assert false
 
   let is_sp = (=) ' '
   let is_digit = function
@@ -58,24 +59,27 @@ module Client (L : Logs.LOG) = struct
     | `Transient_negative_completion -> Fmt.string ppf "4"
     | `Permanent_negative_completion -> Fmt.string ppf "5"
 
-  let decode (code, txts) q =
-    if q then
-      let parse txt = match Angstrom.parse_string parser txt with
-        | Ok v -> Some v
-        | Error _ -> Fmt.epr "Got (at least) an error.\n%!" ; None in
-      let txts = List.map parse txts in
+  let decode resp q =
+    if q then match resp with
+      | Colombe.Rfc1869.Payload _ -> Ok q
+      | Colombe.Rfc1869.Response { code; txts; } ->
+        let parse txt = match Angstrom.parse_string parser txt with
+          | Ok v -> Some v
+          | Error _ -> Fmt.epr "Got (at least) an error.\n%!" ; None in
+        let txts = List.map parse txts in
 
-      match not (List.exists Option.is_none txts), level_of_code code with
-      | true, Ok level ->
-        let txts = List.map Option.value_exn txts in
-        let pp { c; s; d; info; } =
-          L.msg level @@ fun m -> m "%a.%3d.%3d: %s" pp_class c s d info in
-        List.iter pp txts ; Ok q
-      | _ -> Ok q
+        match not (List.exists Option.is_none txts), level_of_code code with
+        | true, Ok level ->
+          let txts = List.map Option.value_exn txts in
+          let pp { c; s; d; info; } =
+            L.msg level @@ fun m -> m "%a.%3d.%3d: %s" pp_class c s d info in
+          List.iter pp txts ; Ok q
+        | _ -> Ok q
     else Ok q
 
   let mail_from _ _ = []
   let rcpt_to _ _ = []
+  let expect _ = None
 end
 
 let verb = "ENHANCEDSTATUSCODES"

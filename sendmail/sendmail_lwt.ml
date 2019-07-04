@@ -33,7 +33,7 @@ let pp_error = Sendmail.pp_error
 
 let run ?logger ~hostname ?(port= 587) ~domain ~authenticator ~from ~recipients auth mail =
   let hostname = Domain_name.to_string hostname in
-  let ctx = State.make_ctx () in
+  let ctx = Colombe.State.make_ctx () in
   let state = Sendmail.make_state ?logger ~domain ~from ~recipients auth mail |> Sendmail.make in
   Tls_lwt.connect authenticator (hostname, port) >>= fun (ic, oc) ->
   let res = run lwt rdwr { ic; oc; } state ctx in Lwt_scheduler.prj res >>= function

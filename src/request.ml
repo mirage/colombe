@@ -284,16 +284,16 @@ module Encoder = struct
     | `Quit -> write "QUIT" encoder ; crlf encoder
     | `Extension ext ->
       match Rfc1869.prj ext with
-      | Rfc1869.V (v, (_, m), _) ->
-        let module Ext = (val m) in
+      | Rfc1869.V (v, (_, (module Ext)), _) ->
         ( match Ext.encode v with
-          | verb, Some args ->
+          | Rfc1869.Payload { buf; off; len; } ->
+            write (Bytes.sub_string buf off len) encoder (* TODO: optimize! *)
+          | Rfc1869.Request { verb; args= [] } ->
+            write verb encoder ; crlf encoder
+          | Rfc1869.Request { verb; args; } ->
             write verb encoder
-          ; write " " encoder
-          ; write args encoder
-          ; crlf encoder
-          | verb, None ->
-            write verb encoder ; crlf encoder )
+          ; List.iter (fun arg -> write " " encoder ; write arg encoder) args
+          ; crlf encoder )
 
   let request command encoder =
     let k encoder = request command encoder ; Ok in

@@ -1,13 +1,29 @@
+(* Client part (only!) *)
+
 type verb = string
-type txts = int * string list
+
+type encode =
+  | Request of { verb : verb; args : string list }
+  | Payload of { buf : Bytes.t; off : int; len : int }
+
+type action =
+  | Recv_code of int
+  | Send of encode
+  | Waiting_payload
+
+type decode =
+  | Response of { code : int; txts : string list }
+  | Payload of { buf : Bytes.t; off : int; len : int }
 
 module type CLIENT = sig
   type t
   type error
 
   val ehlo : t -> string -> (t, error) result
-  val encode : t -> verb * string option
-  val decode : txts -> t -> (t, error) result
+  val encode : t -> encode
+  val action : t -> action option
+  val decode : decode -> t -> (t, error) result
+  val handle : t -> t
   val mail_from : t -> Reverse_path.t -> (string * string option) list
   val rcpt_to : t -> Forward_path.t -> (string * string option) list
 end
@@ -57,6 +73,12 @@ module Make (Functor : Sigs.FUNCTOR) = struct
     go
       (Hashtbl.find_all handlers
          (Obj.extension_id (Obj.extension_constructor t)))
+
+  let eq
+    : type a. t -> a extension -> a option
+    = fun t (module E) -> match t with
+      | E.T v -> Some v
+      | _ -> None
 end
 
 type description =
