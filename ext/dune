@@ -14,7 +14,7 @@
  (name starttls)
  (public_name colombe.starttls)
  (modules starttls)
- (libraries domain-name tls colombe))
+ (libraries logs hxd.string domain-name tls colombe))
 
 (library
  (name enhanced_status_codes)

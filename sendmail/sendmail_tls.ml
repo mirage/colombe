@@ -220,13 +220,9 @@ let run
 
     let rec go = function
       | Read { buffer; off; len; k; } ->
-        Fmt.epr "rd %!" ;
         rdwr.rd flow buffer off len >>= fun len ->
-        Fmt.epr "< @[<hov>%a@]\n%!" (Hxd_string.pp Hxd.O.default) (Bytes.sub_string buffer off len) ;
         go (k len)
       | Write { buffer; off; len; k; } ->
-        Fmt.epr "wr %!" ;
-        Fmt.epr "> @[<hov>%a@]\n%!" (Hxd_string.pp Hxd.O.default) (Bytes.sub_string buffer off len) ;
         rdwr.wr flow buffer off len >>= fun () -> go (k len)
       | Return v -> return (Ok v)
       | Error err -> return (Rresult.R.error err) in
