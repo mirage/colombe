@@ -5,23 +5,26 @@ open Colombe
 module Send_mail_tls_p = struct
   type helo = Domain.t
   type starttls = Rfc1869.t
+  type quit = unit
   type pp_220 = string list
   type pp_250 = string list
 
   type 'x t =
     | Helo : helo t
     | Starttls : starttls t
+    | Quit : quit t
     | PP_220 : pp_220 t
     | PP_250 : pp_250 t
 
   let pp : type x. x t Fmt.t = fun ppf -> function
     | Helo -> Fmt.string ppf "EHLO"
     | Starttls -> Fmt.string ppf "STARTTLS"
+    | Quit -> Fmt.string ppf "QUIT"
     | PP_220 -> Fmt.string ppf "PP-220"
     | PP_250 -> Fmt.string ppf "PP-250"
 
   let is_request (type a) (w : a t) : bool = match w with
-    | Helo -> true | Starttls -> true
+    | Helo -> true | Starttls -> true | Quit -> true
     | _ -> false
 
   type error =
@@ -43,6 +46,7 @@ module Send_mail_tls_p = struct
     = fun w v -> match w, v with
       | Helo, domain -> L (`Hello domain)
       | Starttls, starttls -> L (`Extension starttls)
+      | Quit, () -> L `Quit
       | PP_220, txts -> R (`PP_220 txts)
       | PP_250, txts -> R (`PP_250 txts)
 
@@ -72,8 +76,15 @@ module Send_mail_tls_p = struct
   let encode_raw
     : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
     = fun (buf, off, len) k ctx ->
-      Encoder.write (Bytes.sub_string buf off len) ctx.encoder ;
-      k ctx len
+      let rec go = function
+        | Encoder.Write { buffer; off; len; continue; } ->
+          let k n = go (continue n) in
+          Write { buffer; off; len; k; }
+        | Encoder.Ok ->
+          Encoder.blit ~buf ~off ~len ctx.encoder ;
+          k ctx len
+        | Encoder.Error err -> Error (Encoder err) in
+      go (Encoder.flush (fun _ -> Ok) ctx.encoder)
 
   let rec decode_raw
     : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
@@ -110,13 +121,15 @@ end
 
 module Send_mail_tls_s = struct
   type 's t =
-    { q : [ `q0 | `q1 | `q2 | `q3 | `q4 | `q5 | `q6 ]
+    { q : [ `q0 | `q1 | `q2 | `q3 | `q4 | `q5 | `q6 | `q7 | `q8 ]
     ; tls : Rfc1869.t
     ; domain : Domain.t
     ; tls_buf : Bytes.t }
 end
 
+let src = Logs.Src.create "sendmail-tls" ~doc:"logs sendmail-tls's events"
 module State = State.Make(Send_mail_tls_s)(Send_mail_tls_p)
+module Log = (val Logs.src_log src : Logs.LOG)
 
 let ok x y = Ok (x, y)
 let ( $ ) f x = f x
@@ -133,14 +146,18 @@ let transition
              | Some (ext, args) -> (ext, args)
              | None -> (ext, ""))
           exts in
-      let q = match List.assoc_opt Starttls.description.elho exts with
+      let action, q = match List.assoc_opt Starttls.description.elho exts with
         | Some args ->
-          let Rfc1869.V (v, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
-          ( match Starttls.ehlo v args with
-            | Ok v -> { q with tls= ctor v }
-            | Error _ -> q (* TODO: [args] is not empty. *) )
-        | None -> q (* TODO: STARTTLS is not available on the server side. *) in
-      ok $ send Starttls q.tls $ { q with q= `q3 }
+          let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
+          ( match Starttls.ehlo starttls args with
+            | Ok starttls -> send Starttls (ctor starttls), { q with q= `q3; tls= ctor starttls }
+            | Error error ->
+              Log.err (fun m -> m "Retrieve an error while extension negociation: %a" Starttls.pp_error error) ;
+              send Quit (), { q with q= `q8 } )
+        | None ->
+          Log.err (fun m -> m "STARTTLS is not available") ;
+          send Quit (), { q with q= `q7 } in
+      ok $ action $ q
     | `q3, Send Starttls ->
       let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
       let action, q' = match Starttls.action starttls with
@@ -163,24 +180,32 @@ let transition
     | `q4, Recv (PP_220, txts) ->
       let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
 
-      (match Starttls.decode (Rfc1869.Response { code= 220; txts; }) starttls with
-       | Ok starttls ->
-         let tls = ctor starttls in ok $ send Starttls tls $ { q with tls; q= `q5 }
-       | Error _ -> assert false)
+      ( match Starttls.decode (Rfc1869.Response { code= 220; txts; }) starttls with
+        | Ok starttls ->
+          let tls = ctor starttls in ok $ send Starttls tls $ { q with tls; q= `q5 }
+        | Error error ->
+          Log.err (fun m -> m "Retrieve an error while decoding 220 response (@[<hov>%a@]): %a"
+                      Fmt.(Dump.list string) txts
+                      Starttls.pp_error error) ;
+          ok $ send Quit () $ { q with q= `q8 } )
     | `q4, Read len ->
       let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
 
       ( match Starttls.decode (Rfc1869.Payload { buf= q.tls_buf; off= 0; len; }) starttls with
         | Ok starttls ->
-          (* let starttls = Starttls.handle starttls in *)
           let action, q' = match Starttls.action starttls with
             | Some Rfc1869.Waiting_payload -> read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q5
             | Some Rfc1869.(Send _) -> send Starttls (ctor starttls), `q5
-            | Some (Rfc1869.Recv_code _) -> assert false
+            | Some (Rfc1869.Recv_code _) -> assert false (* XXX(dinosaure): should not occur at this stage! *)
             | None -> Close, `q6 in
           ok $ action $ { q with tls= ctor starttls; q= q' }
-        | Error _ -> assert false )
+        | Error error ->
+          Log.err (fun m -> m "Retrieve an error while decoding payload: %a"
+                      Starttls.pp_error error) ;
+          ok $ send Quit () $ { q with q= `q8 } )
     | `q6, Close -> ok $ Close $ { q with q= `q6 }
+    | `q7, Send Quit -> ok $ Close $ { q with q= `q6 }
+    | `q8, Send Quit -> ok $ Close $ { q with q= `q6 }
     | _, _ -> Error (Send_mail_tls_p.Invalid_state, q)
 
 type error = Send_mail_tls_p.error

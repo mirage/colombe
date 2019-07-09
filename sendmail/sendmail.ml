@@ -157,8 +157,15 @@ module Send_mail_p = struct
   let encode_raw
     : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
     = fun (buf, off, len) k ctx ->
-      Encoder.write (Bytes.sub_string buf off len) ctx.encoder ;
-      k ctx len
+      let rec go = function
+        | Encoder.Write { buffer; off; len; continue; } ->
+          let k n = go (continue n) in
+          Write { buffer; off; len; k; }
+        | Encoder.Ok ->
+          Encoder.blit ~buf ~off ~len ctx.encoder ;
+          k ctx len
+        | Encoder.Error err -> Error (Encoder err) in
+      go (Encoder.flush (fun _ -> Ok) ctx.encoder)
 
   let decode_raw
     : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
