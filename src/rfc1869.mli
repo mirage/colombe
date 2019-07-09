@@ -17,6 +17,8 @@ module type CLIENT = sig
   type t
   type error
 
+  val pp_error : error Fmt.t
+
   val ehlo : t -> string -> (t, error) result
   val encode : t -> encode
   val action : t -> action option

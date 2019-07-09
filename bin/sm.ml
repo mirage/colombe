@@ -1,11 +1,10 @@
+let () = Printexc.record_backtrace true
+
 module Option = struct
   let get_exn = function
     | Some x -> x
     | None -> Fmt.invalid_arg "Option.get_exn"
 end
-
-type 'a stream = unit -> 'a option
-let io_buffer_size = 65536
 
 let to_path mailbox =
   let domain = match mailbox.Mrmime.Mailbox.domain with
@@ -66,90 +65,121 @@ let rdwr =
         let _ = Unix.write socket bytes off len in
         Unix_scheduler.inj ()) }
 
-let romain =
-  let open Mrmime in
-  let open Mailbox in
-  Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ])
+module M = struct
+  open Mrmime
 
-let hannes =
-  let open Mrmime in
-  let open Mailbox in
-  Local.[ w "hannes" ] @ Domain.(domain, [ a "mehnert"; a "org" ])
+  let romain =
+    let open Mailbox in
+    Local.[ w "romain"; w "calascibetta" ] @ Domain.(domain, [ a "gmail"; a "com" ])
 
-let[@warning "-32"] thomas =
-  let open Mrmime in
-  let open Mailbox in
-  Local.[ w "thomas" ] @ Domain.(domain, [ a "gazagnaire"; a "org" ])
+  let thomas =
+    let open Mailbox in
+    Local.[ w "thomas" ] @ Domain.(domain, [ a "gazagnaire"; a "org" ])
 
-let subject =
-  let open Mrmime in
-  let open Unstructured in
-  [ v "Coucou"; sp 1; v "(STARTLS)" ]
+  let hannes =
+    let open Mailbox in
+    Local.[ w "hannes" ] @ Domain.(domain, [ a "mehnert"; a "org" ])
 
-let content' =
-  let open Mrmime in
-  let p = Content_type.Parameters.(of_list [ k "charset", v "utf-8" ]) in
-  Content.make ~encoding:`Quoted_printable Content_type.(make `Text (Subtype.iana_exn `Text "plain") p)
+  let anil =
+    let open Mailbox in
+    Local.[ w "anil" ] @ Domain.(domain, [ a "recoil"; a "org" ])
 
-let header =
-  let open Mrmime in
-  let open Header in
-  Field.(Subject $ subject)
-  & Field.(From $ [ romain ] )
-  & Field.(To $ [ Address.mailbox hannes ])
-  & Field.(Content $ content')
-  & empty
+  let gemma =
+    let open Mailbox in
+    Local.[ w "gemma"; w "t"; w "gordon" ] @ Domain.(domain, [ a "gmail"; a "com" ])
 
-let qp_stream_of_ic ic =
-  let io_buffer_size = 4096 in
-  let buffer = Bytes.create io_buffer_size in
-  let encoder = Pecu.encoder `Manual in
-  let close = ref false in
+  let subject =
+    let open Unstructured in
+    [ v "A"; sp 1; v "Mail"; sp 1; v "with"; sp 1; v "Attachment!" ]
 
-  let rec go () =
-    if !close then None
-    else let v = match input_char ic with
-        | '\n' -> `Line_break
-        | chr -> `Char chr
-        | exception End_of_file -> `End in
-      match Pecu.encode encoder v with
-      | `Ok -> go ()
-      | `Partial ->
-        let rem = Pecu.dst_rem encoder in
-        let res = Some (buffer, 0, io_buffer_size - rem) in
-        Pecu.dst encoder buffer 0 io_buffer_size ;
-        close := if v = `End then true else false ;
-        res in
-  Pecu.dst encoder buffer 0 io_buffer_size ; go
+  let now =
+    let open Date in
+    match Date.of_ptime ~zone:Zone.gmt (Ptime_clock.now ()) with
+    | Ok v -> v
+    | Error (`Msg err) -> failwith err
 
-let hd_stream =
-  let buffer = Bytes.create 4096 in
-  let stream = Mrmime.Header.to_stream header in
+  let c =
+    let content_type =
+      let open Content_type in
+      make `Multipart (Subtype.iana_exn `Multipart "mixed")
+        Parameters.(of_list [ key_exn "boundary", value_exn "my-special-boundary" ]) in
+    Content.make content_type
 
-  (fun () -> match stream () with
-     | Some s ->
-       let ln = String.length s in
-       Bytes.blit_string s 0 buffer 0 ln ;
-       Some (buffer, 0, ln)
-     | None -> None)
+  let stream_of_ic ic =
+    let tmp = Bytes.create 4096 in
+    let go () = match input ic tmp 0 4096 with
+      | 0 -> None
+      | len ->
+        Some (Bytes.unsafe_to_string tmp, 0, len)
+      | exception End_of_file -> None in
+    go
 
-let concat s0 s1 =
-  let c = ref s0 in
-  let rec go () = match !c () with
-    | Some x -> Some x
-    | None -> if !c == s0 then ( c := s1 ; go ()) else None in
-  go
+  let stream_of_file path =
+    let tmp = Bytes.create 4096 in
+    let closed = ref false in
+    let ic = open_in path in
 
-let thomas = to_forward_path romain
-let romain = to_reverse_path romain
-let hannes = to_forward_path hannes
+    let go () = match input ic tmp 0 4096 with
+      | 0 -> if not !closed then ( closed := true ; close_in ic ) ; None
+      | len -> Some (Bytes.unsafe_to_string tmp, 0, len)
+      | exception End_of_file ->
+        if not !closed then ( closed := true ; close_in ic ) ; None in
+    go
 
-let mail = concat hd_stream (qp_stream_of_ic stdin)
+  let part_0 =
+    let content =
+      let content_type =
+        let open Content_type in
+        make `Text (Subtype.iana_exn `Text "plain")
+          Parameters.(of_list [ key_exn "charset", value_exn "utf-8" ]) in
+      Content.make ~encoding:`Quoted_printable content_type in
+    Mt.part ~content (stream_of_ic stdin)
+
+  let part_1 =
+    let content =
+      let content_type =
+        let open Content_type in
+        make `Image (Subtype.iana_exn `Image "png") Parameters.empty in
+      Content.make ~encoding:`Base64 content_type in
+    Mt.part ~content (stream_of_file Sys.argv.(1))
+
+  let multipart = Mt.multipart ~content:c [ part_0; part_1 ]
+
+  let header =
+    let open Header in
+    Field.(From $ [ romain ])
+    & Field.(Date $ now)
+    & Field.(To $ Address.[ mailbox thomas; mailbox hannes; mailbox anil; mailbox gemma ])
+    & Field.(Cc $ (Address.[ mailbox romain ]))
+    & Field.(Sender $ romain)
+    & Field.(Subject $ subject)
+    & empty
+
+  let mail = Mt.make header Mt.multi multipart
+  let stream = Mt.to_stream mail
+
+  let stream =
+    let go () = match stream () with
+      | Some (buf, off, len) -> Some (Bytes.unsafe_of_string buf, off, len)
+      | None -> None in
+    go
+end
+
+let to_romain = to_forward_path M.romain
+let to_thomas = to_forward_path M.thomas
+let to_hannes = to_forward_path M.hannes
+let to_anil = to_forward_path M.anil
+let to_gemma = to_forward_path M.gemma
+let of_romain = to_reverse_path M.romain
 
 let run_with_starttls hostname port domain tls_config =
   let ctx = Colombe.State.make_ctx () in
   let auth = Auth.make ~username:"romain.calascibetta" "" in
-  let state = Sendmail_tls.make_state ~domain ~from:romain ~recipients:[ hannes ] (Some auth) mail tls_config in
+  let state = Sendmail_tls.make_state ~domain ~from:of_romain ~recipients:[ to_romain
+                                                                          ; to_thomas
+                                                                          ; to_hannes
+                                                                          ; to_anil
+                                                                          ; to_gemma ] (Some auth) M.stream tls_config in
   let state = Sendmail_tls.make state in
 
   let { Unix.h_addr_list; _ } = Unix.gethostbyname hostname in
@@ -163,8 +193,17 @@ let run_with_starttls hostname port domain tls_config =
   | Error err -> Fmt.epr "Error: %a\n%!" Sendmail_tls.pp_error err
 
 let tls_config = Tls.Config.client ~authenticator:X509.Authenticator.null ()
-let () = run_with_starttls "smtp.gmail.com" 587 (Colombe.Domain.Domain [ "gmail"; "com" ]) tls_config
+let g () = run_with_starttls "smtp.gmail.com" 587 (Colombe.Domain.Domain [ "gmail"; "com" ]) tls_config
+let () =
+  let auth = Auth.make ~username:"romain.calascibetta" "" in
+  let fiber = run
+      (Domain_name.of_string_exn "smtp.gmail.com") (Some 465)
+      (Colombe.Domain.Domain [ "gmail"; "com" ])
+      X509.Authenticator.null
+      of_romain [ to_romain; to_thomas; to_hannes; to_anil; to_gemma ] (Some auth) M.stream in
+  Lwt_main.run fiber
 
+(*
 let ( <.> ) f g = fun x -> f (g x)
 
 open Cmdliner
@@ -271,3 +310,4 @@ let ca_file =
 let ca_path =
   let doc = "PREM format directory of CA's" in
   Arg.(value & opt (some directory) None & info [ "ca-path"] ~doc)
+*)

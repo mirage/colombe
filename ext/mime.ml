@@ -2,6 +2,10 @@ module Client = struct
   type error = |
   type t = [ `Bit8_MIME | `Bit7 ] option
 
+  let pp_error
+    : error Fmt.t
+    = fun _ -> function _ -> .
+
   let ehlo t _ = Ok t
 
   let mail_from t mail_from = match t, mail_from with

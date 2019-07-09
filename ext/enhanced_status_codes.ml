@@ -18,6 +18,10 @@ module Client (L : Logs.LOG) = struct
     ; d : int
     ; info : string }
 
+  let pp_error
+    : error Fmt.t
+    = fun _ -> function _ -> .
+
   let ehlo _ _ = (* assert (args = ""); *) Ok true
 
   let action _ = assert false

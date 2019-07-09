@@ -52,3 +52,12 @@ let write s encoder =
   (* XXX(dinosaure): should never appear, but avoid continuation allocation. *)
   go 0 (String.length s) encoder
 
+let blit ~buf ~off ~len encoder =
+  let max = Bytes.length encoder.payload in
+  let go j l encoder =
+    let rem = max - encoder.pos in
+    let len = if l > rem then rem else l in
+    Bytes.blit buf (off + j) encoder.payload encoder.pos len ;
+    encoder.pos <- encoder.pos + len ;
+    if len < l then leave_with encoder No_enough_space in
+  go 0 len encoder

@@ -18,3 +18,4 @@ type state =
 val safe : (encoder -> state) -> encoder -> state
 val flush : (encoder -> state) -> encoder -> state
 val write : string -> encoder -> unit
+val blit : buf:bytes -> off:int -> len:int -> encoder -> unit
