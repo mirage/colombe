@@ -8,6 +8,7 @@ val inj : Client.t -> Colombe.Rfc1869.t
 type authenticator = Client.t
 type mechanism
 
+val pp_mechanism : mechanism Fmt.t
 val plain : mechanism
 val make : ?mechanism:mechanism -> username:string -> string -> authenticator
 

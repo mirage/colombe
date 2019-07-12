@@ -95,6 +95,8 @@ end
 type authenticator = Client.t
 type mechanism = Client.mechanism
 
+let pp_mechanism ppf Client.PLAIN = Fmt.string ppf "PLAIN"
+
 let description : Colombe.Rfc1869.description =
   { name= "Authentication"
   ; elho= "AUTH"
