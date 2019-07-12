@@ -67,9 +67,7 @@ let pp ppf = function
   | `Verify data -> Fmt.pf ppf "(Verify %s)" data
   | `Reset -> Fmt.string ppf "Reset"
   | `Quit -> Fmt.string ppf "Quit"
-  | `Extension ext ->
-    let Rfc1869.V (_, (desc, _), _) = Rfc1869.prj ext in
-    Fmt.pf ppf "(Extension %s)" desc.name
+  | `Extension _ -> Fmt.pf ppf "(Extension)"
 
 module Decoder = struct
   include Decoder
@@ -98,7 +96,7 @@ module Decoder = struct
     let command = match Bytes.unsafe_get raw (off + len - 1) with
       | ' ' -> Bytes.sub_string raw off (len - 1)
       | '\n' -> Bytes.sub_string raw off (len - 2)
-      | _ -> assert false (* end with LF or SPACE or leave with an error *) in
+      | _ -> leave_with decoder Expected_eol_or_space in
     match Hashtbl.find trie command with
     | command ->
       decoder.pos <- decoder.pos + len ; command
@@ -284,7 +282,7 @@ module Encoder = struct
     | `Quit -> write "QUIT" encoder ; crlf encoder
     | `Extension ext ->
       match Rfc1869.prj ext with
-      | Rfc1869.V (v, (_, (module Ext)), _) ->
+      | Rfc1869.V (v, (module Ext), _) ->
         ( match Ext.encode v with
           | Rfc1869.Payload { buf; off; len; } ->
             write (Bytes.sub_string buf off len) encoder (* TODO: optimize! *)

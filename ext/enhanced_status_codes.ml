@@ -6,8 +6,10 @@ module Option = struct
     | Some x -> x | None -> Fmt.invalid_arg "Option.value_exn"
 end
 
+type on = bool
+
 module Client (L : Logs.LOG) = struct
-  type t = bool
+  type t = on
   type error = |
 
   type code =
@@ -83,10 +85,7 @@ module Client (L : Logs.LOG) = struct
 
   let mail_from _ _ = []
   let rcpt_to _ _ = []
-  let expect _ = None
 end
-
-let verb = "ENHANCEDSTATUSCODES"
 
 let description : Colombe.Rfc1869.description =
   { name= "Enhanced-Status-Codes"
@@ -95,4 +94,4 @@ let description : Colombe.Rfc1869.description =
 
 let extension (module Logs : Logs.LOG) =
   let module Ext = Client(Logs) in
-  Colombe.Rfc1869.inj (description, (module Ext))
+  Colombe.Rfc1869.inj (module Ext)

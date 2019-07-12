@@ -33,7 +33,7 @@ type description =
   ; elho : string
   ; verb : verb list }
 
-type 'a client = description * (module CLIENT with type t = 'a)
+type 'a client = (module CLIENT with type t = 'a)
 type t = private ..
 
 module type S = sig
