@@ -1,10 +1,8 @@
 module Client = struct
-  type error = |
+  type error = Colombe.Rfc1869.error
   type t = [ `Bit8_MIME | `Bit7 ] option
 
-  let pp_error
-    : error Fmt.t
-    = fun _ -> function _ -> .
+  let pp_error = Colombe.Rfc1869.pp_error
 
   let ehlo t _ = Ok t
 

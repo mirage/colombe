@@ -10,7 +10,7 @@ module Client = struct
 
   let mechanism_to_string = Fmt.to_to_string pp_mechanism
 
-  type error =
+  type Colombe.Rfc1869.error +=
     | Unsupported_mechanism of mechanism (* 504 *)
     | Authentication_rejected (* 501 *)
     | Weak_mechanism of mechanism (* 534 *)
@@ -18,6 +18,8 @@ module Client = struct
     | Line_too_long (* 500 *)
     | Encryption_required (* 538 *)
     | Invalid_state
+
+  type error = Colombe.Rfc1869.error
 
   let pp_error ppf = function
     | Unsupported_mechanism m -> Fmt.pf ppf "(Unsupported_mechanism %a)" pp_mechanism m
@@ -27,6 +29,7 @@ module Client = struct
     | Line_too_long -> Fmt.string ppf "Line_too_long"
     | Encryption_required -> Fmt.string ppf "Encryption_required"
     | Invalid_state -> Fmt.string ppf "Invalid_state"
+    | err -> Colombe.Rfc1869.pp_error ppf err
 
   type t =
     { mechanism : mechanism

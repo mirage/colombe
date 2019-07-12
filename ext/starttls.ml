@@ -20,12 +20,14 @@ module Client = struct
   and wait = unit and close = unit
   and fiber = Fiber : ('s, 'error) Colombe.State.process -> fiber
 
-  type error =
+  type Colombe.Rfc1869.error +=
     | Unexpected_arguments
     | Unexpected_application_data
     | Unexpected_payload
     | Unexpected_SMTP_response of { code : int; txts : string list }
     | End_of_stream
+
+  type error = Colombe.Rfc1869.error
 
   let pp_error ppf = function
     | Unexpected_arguments -> Fmt.string ppf "Unexpected_arguments"
@@ -35,6 +37,7 @@ module Client = struct
       Fmt.pf ppf "(Unexpected_SMTP_response (@[<1>code: %d,@ txts= @[<hov>%a@]@]))"
         code Fmt.(Dump.list string) txts
     | End_of_stream -> Fmt.string ppf "End_of_stream"
+    | err -> Colombe.Rfc1869.pp_error ppf err
 
   let ehlo t args =
     if args <> ""

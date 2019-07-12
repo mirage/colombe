@@ -9,8 +9,8 @@ end
 type on = bool
 
 module Client (L : Logs.LOG) = struct
+  type error = Colombe.Rfc1869.error
   type t = on
-  type error = |
 
   type code =
     { c : [ `Positive_completion (* INFO *)
@@ -20,9 +20,7 @@ module Client (L : Logs.LOG) = struct
     ; d : int
     ; info : string }
 
-  let pp_error
-    : error Fmt.t
-    = fun _ -> function _ -> .
+  let pp_error = Colombe.Rfc1869.pp_error
 
   let ehlo _ _ = (* assert (args = ""); *) Ok true
 
