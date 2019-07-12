@@ -15,9 +15,13 @@ type decode =
   | Response of { code : int; txts : string list }
   | Payload of { buf : Bytes.t; off : int; len : int }
 
+type error = ..
+
+let pp_error : error Fmt.t = fun _ _ -> ()
+
 module type CLIENT = sig
   type t
-  type error
+  type nonrec error = error
 
   val pp_error : error Fmt.t
 
