@@ -4,6 +4,16 @@ open Colombe.Sigs
 open Colombe.State
 open Colombe
 
+module Option = struct
+  let map f = function
+    | Some x -> Some (f x)
+    | None -> None
+
+  let bind f = function
+    | Some x -> f x
+    | None -> None
+end
+
 type helo = Domain.t
 type mail_from = Reverse_path.t * (string * string option) list
 type rcpt_to = Forward_path.t * (string * string option) list
@@ -86,7 +96,7 @@ module Send_mail_p = struct
     | Encoder of Encoder.error
     | Unexpected_request : 'x t * Request.t -> error
     | Unexpected_reply : 'x t * Reply.t -> error
-    | Auth_error of Auth.Client.error
+    | Auth_error
     | Invalid_state
 
   let pp_error ppf = function
@@ -94,7 +104,7 @@ module Send_mail_p = struct
     | Encoder err -> Encoder.pp_error ppf err
     | Unexpected_request (w, v) -> Fmt.pf ppf "(Unexpected_request expect:%a,@ received:@[<hov>%a@])" pp w Request.pp v
     | Unexpected_reply (w, v) -> Fmt.pf ppf "(Unexpected_reply expect:%a,@ received:@[<hov>%a@])" pp w Reply.pp v
-    | Auth_error err -> Fmt.pf ppf "(Auth_error @[<hov>%a@])" Auth.Client.pp_error err
+    | Auth_error -> Fmt.string ppf "Auth_error"
     | Invalid_state -> Fmt.pf ppf "Invalid_state"
 
   let uncast
@@ -199,7 +209,7 @@ module Send_mail_s = struct
     ; from : from
     ; recipients : recipient list
     ; mail : (bytes * int * int) stream
-    ; auth : Auth.authenticator option
+    ; auth : Rfc1869.t option
     ; logger : Rfc1869.t option
     ; encoding : Rfc1869.t }
   and from = Reverse_path.t
@@ -208,41 +218,31 @@ end
 
 module State = State.Make(Send_mail_s)(Send_mail_p)
 
-let recv_from_auth auth = match Auth.Client.action auth with
-  | Some (Rfc1869.Recv_code 235) -> Some Send_mail_p.PP_235
-  | Some (Rfc1869.Recv_code 250) -> Some Send_mail_p.PP_250
-  | Some (Rfc1869.Recv_code 334) -> Some Send_mail_p.TP_334
-  | Some _ | None -> None
-
 let to_response : type a. a Send_mail_p.t -> a -> Rfc1869.decode = fun k txts -> match k with
   | Send_mail_p.TP_334 -> Rfc1869.Response { code= 334; txts; }
   | Send_mail_p.PP_250 -> Rfc1869.Response { code= 250; txts; }
   | Send_mail_p.PP_235 -> Rfc1869.Response { code= 235; txts; }
-  | _ -> Fmt.failwith "By duality, [to_code] should never receive something else"
+  | _ -> Fmt.failwith "By duality, [to_response] should never receive something else than TP-334, PP-250 and PP-235"
 
 let ok x y = Ok (x, y)
 let ( $ ) f x = f x
 
-let rec transition
-  : 's Send_mail_s.t -> State.event -> (State.action * 's Send_mail_s.t, Send_mail_p.error * 's Send_mail_s.t) result
-  =
-  let module Auth_ext = (val Auth.extension) in
-
-  fun q e -> let open State in
-    ( match q.logger with
-      | None -> ()
-      | Some t ->
-        let Rfc1869.V (v, (_, (module Codes)), _) = Rfc1869.prj t in
-        match e with
-        | Recv (PP_250, txts) ->
-          ignore @@ Codes.decode (Rfc1869.Response { code= 250; txts }) v
-        | Recv (PP_220, txts) ->
-          ignore @@ Codes.decode (Rfc1869.Response { code= 220; txts }) v
-        | Recv (PP_221, txts) ->
-          ignore @@ Codes.decode (Rfc1869.Response { code= 221; txts }) v
-        | Recv (PP_235, txts) ->
-          ignore @@ Codes.decode (Rfc1869.Response { code= 235; txts }) v
-        | _ -> () ) ;
+let rec transition (q:'s Send_mail_s.t) (e:State.event) =
+  let open State in
+  ( match q.logger with
+    | None -> ()
+    | Some t ->
+      let Rfc1869.V (v, (module Codes), _) = Rfc1869.prj t in
+      match e with
+      | Recv (PP_250, txts) ->
+        ignore @@ Codes.decode (Rfc1869.Response { code= 250; txts }) v
+      | Recv (PP_220, txts) ->
+        ignore @@ Codes.decode (Rfc1869.Response { code= 220; txts }) v
+      | Recv (PP_221, txts) ->
+        ignore @@ Codes.decode (Rfc1869.Response { code= 221; txts }) v
+      | Recv (PP_235, txts) ->
+        ignore @@ Codes.decode (Rfc1869.Response { code= 235; txts }) v
+      | _ -> () ) ;
 
     match q.q, e with
     | `q14, Recv (PP_250, _ehlo :: exts) ->
@@ -253,9 +253,9 @@ let rec transition
           exts in
       ( let q = match q.logger, List.assoc_opt Enhanced_status_codes.description.elho exts with
             | Some t, Some args ->
-              let Rfc1869.V (v, (_, (module Codes)), ctor) = Rfc1869.prj t in
+              let Rfc1869.V (v, (module Codes), inj) = Rfc1869.prj t in
               ( match Codes.ehlo v args with
-                | Ok v -> { q with logger= Some (ctor v) }
+                | Ok v -> { q with logger= Some (inj v) }
                 | Error _ -> q )
             | Some _, None | None, Some _ | None, None -> { q with logger= None } in
 
@@ -264,32 +264,43 @@ let rec transition
 
         match q.auth, List.assoc_opt Auth.description.elho exts with
         | Some _, None | None, Some _ | None, None -> assert false (* TODO *)
-        | Some auth, Some args -> match Auth.Client.ehlo auth args with
-          | Ok auth -> ok $ send Auth (Auth_ext.T auth) $ { q with q= `q15; auth= Some auth; }
-          | Error err -> Error (Send_mail_p.Auth_error err, q) )
+        | Some auth, Some args ->
+          let Rfc1869.V (auth, (module Auth), inj) = Rfc1869.prj auth in
+          match Auth.ehlo auth args with
+          | Ok auth ->
+            ok $ send Auth (inj auth) $ { q with q= `q15; auth= Some (inj auth); }
+          | Error _ -> Error (Send_mail_p.Auth_error, q) )
     | `q15, Send Auth ->
       ( match q.auth with
         | None -> Error (Send_mail_p.Invalid_state, q)
-        | Some auth -> match recv_from_auth auth with
-          | Some v -> ok $ recv v $ { q with q= `q16; }
-          | None -> transition { q with q= `q2; auth= Some auth } (Recv (PP_250, [])) (* TODO: or error? *) )
+        | Some ext ->
+          let Rfc1869.V (auth, (module Auth), inj) = Rfc1869.prj ext in
+          match Auth.action auth with
+          | Some (Rfc1869.Recv_code 235) -> ok $ recv Send_mail_p.PP_235 $ { q with q= `q16; }
+          | Some (Rfc1869.Recv_code 250) -> ok $ recv Send_mail_p.PP_250 $ { q with q= `q16; }
+          | Some (Rfc1869.Recv_code 334) -> ok $ recv Send_mail_p.TP_334 $ { q with q= `q16; }
+          | Some _ | None -> transition { q with q= `q2; auth= Some (inj auth) } (Recv (PP_250, [])) (* TODO: or error? *) )
     | `q16, Recv (k, v) ->
       ( match q.auth with
         | None -> Error (Send_mail_p.Invalid_state, q)
-        | Some auth -> match Auth.Client.decode (to_response k v) auth with
-          | Ok auth ->
-            if Auth.Client.is_authenticated auth
-            then transition { q with q= `q2; auth= Some auth; } (Recv (PP_250, []))
-            else ok $ send Auth (Auth_ext.T auth) $ { q with q= `q15; auth= Some auth; }
-          | Error err -> Error (Send_mail_p.Auth_error err, q))
+        | Some ext ->
+          match Rfc1869.eq ext (module Auth.Extension) with
+          | None -> Fmt.failwith "Expected AUTH extension"
+          | Some auth ->
+            match Auth.Client.decode (to_response k v) auth with
+            | Ok auth ->
+              if Auth.is_authenticated auth
+              then transition { q with q= `q2; auth= Some (Auth.inj auth); } (Recv (PP_250, []))
+              else ok $ send Auth (Auth.inj auth) $ { q with q= `q15; auth= Some (Auth.inj auth); }
+            | Error _ -> Error (Send_mail_p.Auth_error, q) )
     | `q2, Recv (PP_250, _txts) ->
-      let Rfc1869.V (v, (_, (module Ext)), _ctor) = Colombe.Rfc1869.prj q.encoding in
+      let Rfc1869.V (v, (module Ext), _inj) = Colombe.Rfc1869.prj q.encoding in
       (* XXX(dinosaure): extraction of 8BITMIME extension. *)
 
-      ( match q.auth with
+      ( match Option.bind (fun ext -> Rfc1869.eq ext (module Auth.Extension)) q.auth with
         | None ->
           ok $ send Mail_from (q.from, Ext.mail_from v q.from) $ { q with q= `q3 }
-        | Some auth when Auth.Client.is_authenticated auth ->
+        | Some auth when Auth.is_authenticated auth ->
           ok $ send Mail_from (q.from, Ext.mail_from v q.from) $ { q with q= `q3 }
         | Some _ -> Error (Send_mail_p.Invalid_state, q) )
     | `q4, Recv (PP_250, _txts) ->
@@ -328,6 +339,7 @@ let make_state ?logger ?(encoding= Mime.bit8) ~domain ~from ~recipients auth mai
     | Some src -> let module Ext = (val (Enhanced_status_codes.extension src)) in Some (Ext.T false)
     | None -> None in
   let encoding = Mime.inj encoding in
+  let auth = Option.map Auth.inj auth in
   { Send_mail_s.q= `q0; domain; from; recipients; mail; auth; logger; encoding; }
 
 let make state =

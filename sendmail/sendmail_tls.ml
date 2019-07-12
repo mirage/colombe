@@ -148,9 +148,9 @@ let transition
           exts in
       let action, q = match List.assoc_opt Starttls.description.elho exts with
         | Some args ->
-          let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
+          let Rfc1869.V (starttls, (module Starttls), inj) = Rfc1869.prj q.tls in
           ( match Starttls.ehlo starttls args with
-            | Ok starttls -> send Starttls (ctor starttls), { q with q= `q3; tls= ctor starttls }
+            | Ok starttls -> send Starttls (inj starttls), { q with q= `q3; tls= inj starttls }
             | Error error ->
               Log.err (fun m -> m "Retrieve an error while extension negociation: %a" Starttls.pp_error error) ;
               send Quit (), { q with q= `q8 } )
@@ -159,46 +159,57 @@ let transition
           send Quit (), { q with q= `q7 } in
       ok $ action $ q
     | `q3, Send Starttls ->
-      let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
+      Log.info (fun m -> m "TLS chunk sended .\n%!") ;
+
+      let Rfc1869.V (starttls, (module Starttls), inj) = Rfc1869.prj q.tls in
       let action, q' = match Starttls.action starttls with
         | Some (Rfc1869.Recv_code 220) -> recv PP_220, `q4
         | Some Rfc1869.Waiting_payload -> read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q4
-        | Some Rfc1869.(Send _) -> send Starttls (ctor starttls), `q5
+        | Some Rfc1869.(Send _) -> send Starttls (inj starttls), `q5
         | Some (Rfc1869.Recv_code _) -> assert false
         | None -> Close, `q6 in
-      ok $ action $ { q with tls= ctor starttls; q= q' }
+      ok $ action $ { q with tls= inj starttls; q= q' }
     | `q5, Send Starttls ->
-      let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
+      let Rfc1869.V (starttls, (module Starttls), inj) = Rfc1869.prj q.tls in
       let starttls = Starttls.handle starttls in
-      let tls = ctor starttls in
+      let tls = inj starttls in
       let action, q' = match Starttls.action starttls with
         | Some (Rfc1869.Recv_code _) -> assert false
         | Some Rfc1869.Waiting_payload -> read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q4
-        | Some Rfc1869.(Send _) -> send Starttls tls, `q3
+        | Some Rfc1869.(Send _) ->
+          Log.info (fun m -> m "Ask FSM to send TLS chunk.\n%!") ;
+          send Starttls tls, `q5 (* XXX(dinosaure): ok dragoon here, if we move
+                                    to [q3], we send TLS chunk twice times. Why
+                                    I make this new state? Why we not use only
+                                    [q3] to send TLS chunk? Why [handle] is only
+                                    on [q5]? WHY? *)
         | None -> Close, `q6 in
       ok $ action $ { q with tls; q= q' }
     | `q4, Recv (PP_220, txts) ->
-      let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
+      let Rfc1869.V (starttls, (module Starttls), inj) = Rfc1869.prj q.tls in
 
       ( match Starttls.decode (Rfc1869.Response { code= 220; txts; }) starttls with
         | Ok starttls ->
-          let tls = ctor starttls in ok $ send Starttls tls $ { q with tls; q= `q5 }
+          let tls = inj starttls in ok $ send Starttls tls $ { q with tls; q= `q5 }
         | Error error ->
           Log.err (fun m -> m "Retrieve an error while decoding 220 response (@[<hov>%a@]): %a"
                       Fmt.(Dump.list string) txts
                       Starttls.pp_error error) ;
           ok $ send Quit () $ { q with q= `q8 } )
     | `q4, Read len ->
-      let Rfc1869.V (starttls, (_, (module Starttls)), ctor) = Rfc1869.prj q.tls in
+      let Rfc1869.V (starttls, (module Starttls), inj) = Rfc1869.prj q.tls in
 
       ( match Starttls.decode (Rfc1869.Payload { buf= q.tls_buf; off= 0; len; }) starttls with
         | Ok starttls ->
           let action, q' = match Starttls.action starttls with
-            | Some Rfc1869.Waiting_payload -> read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q5
-            | Some Rfc1869.(Send _) -> send Starttls (ctor starttls), `q5
+            | Some Rfc1869.Waiting_payload ->
+              read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q4
+            | Some Rfc1869.(Send _) ->
+              Log.info (fun m -> m "Ask FSM to send TLS chunk.\n%!") ;
+              send Starttls (inj starttls), `q5
             | Some (Rfc1869.Recv_code _) -> assert false (* XXX(dinosaure): should not occur at this stage! *)
             | None -> Close, `q6 in
-          ok $ action $ { q with tls= ctor starttls; q= q' }
+          ok $ action $ { q with tls= inj starttls; q= q' }
         | Error error ->
           Log.err (fun m -> m "Retrieve an error while decoding payload: %a"
                       Starttls.pp_error error) ;
@@ -215,11 +226,13 @@ let pp_error = Send_mail_tls_p.pp_error
 type 'x state = 'x Send_mail_tls_s.t
 type 'x t = 'x State.t
 
-let domain_to_domain_name = function
-  | Colombe.Domain.IPv4 ipv4 -> Domain_name.of_string_exn (Ipaddr.V4.to_string ipv4) (* TODO: fuzz! *)
-  | Colombe.Domain.IPv6 ipv6 -> Domain_name.of_string_exn (Ipaddr.V6.to_string ipv6) (* TODO: fuzz! *)
-  | Colombe.Domain.Extension (k, v) -> Domain_name.of_string_exn (Fmt.strf "%s:%s" k v)
-  | Colombe.Domain.Domain lst -> Domain_name.of_strings_exn lst
+let domain_to_domain_name x =
+  let x = match x with
+    | Colombe.Domain.IPv4 ipv4 -> Domain_name.of_string (Ipaddr.V4.to_string ipv4) (* TODO: fuzz! *)
+    | Colombe.Domain.IPv6 ipv6 -> Domain_name.of_string (Ipaddr.V6.to_string ipv6) (* TODO: fuzz! *)
+    | Colombe.Domain.Extension (k, v) -> Domain_name.of_string (Fmt.strf "%s:%s" k v)
+    | Colombe.Domain.Domain lst -> Domain_name.of_strings lst in
+  Rresult.R.bind x Domain_name.host
 
 let make_state ?logger ?encoding ~domain ~from ~recipients auth mail tls_config =
   let sendmail_state = Sendmail.make_state ?logger ?encoding ~domain ~from ~recipients auth mail in
@@ -229,9 +242,11 @@ let make_state ?logger ?encoding ~domain ~from ~recipients auth mail tls_config 
   let fiber = Sendmail.State.run sendmail_state sendmail_ctx (Sendmail.State.Recv (Sendmail.PP_220, [])) in
   let fiber = Starttls.fiber fiber in
 
+  let open Rresult.R in
+  domain_to_domain_name domain >>| fun valid_domain ->
   { Send_mail_tls_s.q= `q0
   ; domain
-  ; tls= Starttls.make fiber ~domain:(domain_to_domain_name domain) tls_config
+  ; tls= Starttls.inj (Starttls.make fiber ~domain:valid_domain tls_config)
   ; tls_buf= Bytes.create 4096 }
 
 let make state =

@@ -17,7 +17,6 @@ module Client = struct
     | Authentication_failed (* 535 *)
     | Line_too_long (* 500 *)
     | Encryption_required (* 538 *)
-    | Invalid_ehlo of string
     | Invalid_state
 
   let pp_error ppf = function
@@ -27,12 +26,11 @@ module Client = struct
     | Weak_mechanism m -> Fmt.pf ppf "(Weak_mechanism %a)" pp_mechanism m
     | Line_too_long -> Fmt.string ppf "Line_too_long"
     | Encryption_required -> Fmt.string ppf "Encryption_required"
-    | Invalid_ehlo args -> Fmt.pf ppf "(Invalid_ehlo %S)" args
     | Invalid_state -> Fmt.string ppf "Invalid_state"
 
   type t =
     { mechanism : mechanism
-    ; q : [ `q0 | `q1_plain | `authenticated ]
+    ; q : [ `q0 | `q1_plain of string option | `authenticated ]
     ; username : string
     ; password : string }
 
@@ -45,17 +43,20 @@ module Client = struct
   let encode t = match t.q, t.mechanism with
     | `q0, PLAIN ->
       Colombe.Rfc1869.Request { verb= "AUTH"; args= [ "PLAIN" ] }
-    | `q1_plain, PLAIN ->
-      let combined = Fmt.strf "\000%s\000%s" t.username t.password in (* lol *)
+    | `q1_plain id, PLAIN ->
+      let combined = match id with
+        | Some id -> Fmt.strf "%s\000%s\000%s" id t.username t.password
+        | None -> Fmt.strf "\000%s\000%s" t.username t.password in (* lol *)
       let buf = Base64.encode_exn ~pad:true combined in
-      Colombe.Rfc1869.Payload { buf= Bytes.unsafe_of_string (buf ^"\r\n"); off= 0; len= String.length buf + 2 }
-    | _, _ -> assert false
+      Colombe.Rfc1869.Payload { buf= Bytes.unsafe_of_string (buf ^ "\r\n"); off= 0; len= String.length buf + 2 }
+    | `authenticated, PLAIN ->
+      Fmt.failwith "Impossible to encode something where we are already authenticated"
 
   let handle t = t
 
   let action t = match t.q with
     | `q0 -> Some (Colombe.Rfc1869.Recv_code 334)
-    | `q1_plain -> Some (Colombe.Rfc1869.Recv_code 235)
+    | `q1_plain _ -> Some (Colombe.Rfc1869.Recv_code 235)
     | `authenticated -> None
 
   let decode resp t = match t.q, resp with
@@ -66,27 +67,30 @@ module Client = struct
     | `q0, Colombe.Rfc1869.Response { code= 534; _ } ->
       assert (t.mechanism = PLAIN) ;
       Error (Weak_mechanism t.mechanism)
-    | `q0, Colombe.Rfc1869.Response { code= 334; _ }->
-      (* XXX(dinosaure): here, [_txts] should be empty. *)
-      Ok { t with q= `q1_plain }
-    | `q1_plain, Colombe.Rfc1869.Response { code= 235; _ } ->
+    | `q0, Colombe.Rfc1869.Response { code= 334; txts; }->
+      let id = match txts with
+        | [] -> None
+        | x :: _ -> Some (Base64.decode_exn x) in
+      (* XXX(dinosaure): should alert when r <> []? *)
+      Ok { t with q= `q1_plain id }
+    | `q1_plain _, Colombe.Rfc1869.Response { code= 235; _ } ->
       Ok { t with q= `authenticated }
-    | `q1_plain, Colombe.Rfc1869.Response { code= 500; _ } ->
+    | `q1_plain _, Colombe.Rfc1869.Response { code= 500; _ } ->
       Error Line_too_long
-    | `q1_plain, Colombe.Rfc1869.Response { code= 501; _ } ->
+    | `q1_plain _, Colombe.Rfc1869.Response { code= 501; _ } ->
       Error Authentication_rejected
-    | `q1_plain, Colombe.Rfc1869.Response { code= 535; _ } ->
+    | `q1_plain _, Colombe.Rfc1869.Response { code= 535; _ } ->
       Error Authentication_failed
     | _ -> Error Invalid_state
 
   let is_authenticated t = t.q = `authenticated
 
-  let mail_from _t _mail_from = []
+  let mail_from _t _mail_from = [] (* TODO: handle [AUTH=] parameter *)
   let rcpt_to _t _rcpt_to = []
 end
 
 type authenticator = Client.t
-let verb = "AUTH"
+type mechanism = Client.mechanism
 
 let description : Colombe.Rfc1869.description =
   { name= "Authentication"
@@ -101,4 +105,8 @@ let make ?(mechanism= Client.PLAIN) ~username password =
   ; username
   ; password }
 
-let extension = Colombe.Rfc1869.inj (description, (module Client))
+let is_authenticated = Client.is_authenticated
+
+let extension = Colombe.Rfc1869.inj (module Client)
+module Extension = (val extension)
+let inj v = Extension.T v

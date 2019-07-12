@@ -18,11 +18,9 @@ module Client = struct
   let handle _t = assert false
   let decode _txts _t = Ok _t
   let rcpt_to _t _rcpt_to = []
-  let expect _ = None
 end
 
 type encoding = Client.t
-let verb = "8BITMIME"
 
 let description : Colombe.Rfc1869.description =
   { name= "8bit-MIMEtransport"
@@ -33,7 +31,7 @@ let none = None
 let bit7 = Some `Bit7
 let bit8 = Some `Bit8_MIME
 
-let extension = Colombe.Rfc1869.inj (description, (module Client))
+let extension = Colombe.Rfc1869.inj (module Client)
 
 let inj v =
   let module Ext = (val extension) in

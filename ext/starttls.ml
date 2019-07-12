@@ -100,15 +100,16 @@ module Client = struct
           V ((), Wait state)
         | Write { buffer; off; len; k= _ } ->
           Log.app (fun m -> m "Fiber wants to write: @[<hov>%a@]" (Hxd_string.pp hxd_config) (Bytes.sub_string buffer off len)) ;
-          V (Cstruct.of_bytes ~off ~len buffer, Send state)
+          ( match Tls.Engine.send_application_data state [ Cstruct.of_bytes buffer ~off ~len ] with
+            | Some (state, send) -> V (send, Send state)
+            | None -> V ((), Wait state) (* TODO! *) )
         | Return _ | Error _ ->
+          Log.info (fun m -> m "Got Return or Error state from fiber.\n%!" ) ;
           (* XXX(dinosaure): any [Return] or [Error] wants to notify the server
              to close the connection. *)
           V ((), Close state) in
       { fiber= Fiber fiber; q }
     | _ -> t
-
-  type response = PP_220
 
   let action t = match t.q with
     | V (_, Initialization _) -> Some (Colombe.Rfc1869.Recv_code 220)
@@ -230,16 +231,17 @@ module Client = struct
 end
 
 type state = Client.t
+type fiber = Client.fiber
 
 let description : Colombe.Rfc1869.description =
   { name= "STARTTLS"
   ; elho= "STARTTLS"
   ; verb= [ "STARTTLS" ] }
 
-let extension = Colombe.Rfc1869.inj (description, (module Client))
+let extension = Colombe.Rfc1869.inj (module Client)
 
-module Ext = (val extension)
-let ctor v = Ext.T v
+module Extension = (val extension)
+let inj v = Extension.T v
 
 let fiber fiber = Client.Fiber fiber
 
@@ -248,5 +250,4 @@ let make fiber ?domain config =
     | None -> config
     | Some domain -> Tls.Config.peer config (Domain_name.to_string domain) in
   let state, handshake = Tls.Engine.client config in
-  let state = { Client.q= V (handshake, Initialization state); fiber } in
-  Ext.T state
+  { Client.q= V (handshake, Initialization state); fiber }

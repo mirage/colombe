@@ -88,7 +88,7 @@ type description =
   ; elho : string
   ; verb : verb list }
 
-module W0 = struct type 'a t = description * (module CLIENT with type t = 'a) end
-include Make(W0)
+module W = struct type 'a t = (module CLIENT with type t = 'a) end
+include Make(W)
 
-type 'a client = 'a W0.t
+type 'a client = (module CLIENT with type t = 'a)
