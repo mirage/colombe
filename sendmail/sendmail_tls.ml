@@ -74,7 +74,7 @@ module Send_mail_tls_p = struct
       | _, (#Reply.t as v) -> Error (Unexpected_reply (w, v))
 
   let encode_raw
-    : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
+    : (string * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
     = fun (buf, off, len) k ctx ->
       let rec go = function
         | Encoder.Write { buffer; off; len; continue; } ->

@@ -10,7 +10,7 @@ type 't impl =
 
 type ('flow, 's) rdwr =
   { rd : 'flow -> bytes -> int -> int -> (int, 's) io
-  ; wr : 'flow -> bytes -> int -> int -> (unit, 's) io }
+  ; wr : 'flow -> string -> int -> int -> (unit, 's) io }
 
 module type X = sig
   type 'a s

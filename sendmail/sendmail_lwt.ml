@@ -24,7 +24,7 @@ let rdwr =
         let res = Lwt_io.read_into ic bytes off len in
         Lwt_scheduler.inj res)
   ; wr= (fun { oc; _ } bytes off len ->
-        let res = Lwt_io.write_from_exactly oc bytes off len in
+        let res = Lwt_io.write_from_exactly oc (Bytes.unsafe_of_string bytes) off len in
         Lwt_scheduler.inj res) }
 
 type error = Sendmail.error
