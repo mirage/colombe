@@ -36,7 +36,11 @@ let rdwr_from_flows inputs outputs =
       then Fmt.failwith "Expected %S, have %S" (String.sub x 0 len) (String.sub bytes off len) ;
       if String.length x = len then outputs := r else outputs := (String.sub x len (String.length x - len)) :: r ;
       if len < max then write () bytes (off + len) (max - len) else Unix_scheduler.inj () in
-  { Colombe.Sigs.rd= read; wr= write; }
+  { Colombe.Sigs.rd= read; wr= write; },
+  (fun () -> match !inputs, !outputs with
+     | [], [] -> ()
+     | r, w -> Fmt.failwith "inputs or ouputs are not empty: @[<hov>%a@] and @[<hov>%a@]"
+                 Fmt.(Dump.list string) r Fmt.(Dump.list string) w)
 
 let test_0 () =
   Alcotest.test_case "usual without authentication" `Quick @@ fun () ->
@@ -48,7 +52,7 @@ let test_0 () =
       ~recipients:[ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
       None (fun () -> None) in
   let state = Sendmail.make state in
-  let rdwr =
+  let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESTMP - gsmtp"
       ; "250-smtp.gmail.com at your service, [8.8.8.8]"
@@ -70,8 +74,8 @@ let test_0 () =
       ; "QUIT" ] in
   let fiber = Sendmail.run unix rdwr () state ctx in
   match Unix_scheduler.prj fiber with
-  | Ok _ -> ()
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
+  | Ok _ -> is_empty ()
 
 let () =
   Alcotest.run "sendmail" [ "mock", [ test_0 () ] ]
