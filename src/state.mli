@@ -1,6 +1,6 @@
 type ('s, 'error) process =
   | Read of { buffer : bytes; off: int; len: int; k: int -> ('s, 'error) process }
-  | Write of { buffer : bytes; off: int; len: int; k: int -> ('s, 'error) process }
+  | Write of { buffer : string; off: int; len: int; k: int -> ('s, 'error) process }
   | Return of 's
   | Error of 'error
 
@@ -19,7 +19,7 @@ module type PROTOCOL = sig
   val encode : ('o t * 'o) -> (ctx -> ('s, error) process) -> ctx -> ('s, error) process
 
   val encode_raw
-    : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
+    : (string * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
   val decode_raw
     : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
 end
@@ -38,7 +38,7 @@ module Make (State : Sigs.FUNCTOR) (Protocol : PROTOCOL) : sig
   type action =
     | Send : 'x Protocol.t * 'x -> action
     | Recv : 'x Protocol.t -> action
-    | Write of { buf : bytes; off : int; len : int; }
+    | Write of { buf : string; off : int; len : int; }
     | Read of { buf : bytes; off : int; len : int; }
     | Close
 
@@ -47,7 +47,7 @@ module Make (State : Sigs.FUNCTOR) (Protocol : PROTOCOL) : sig
 
   val send : 'x Protocol.t -> 'x -> action
   val recv : 'x Protocol.t -> action
-  val write : buf:bytes -> off:int -> len:int -> action
+  val write : buf:string -> off:int -> len:int -> action
   val read : buf:bytes -> off:int -> len:int -> action
 
   val run : 's t -> ctx -> event -> ('s state, Protocol.error) process

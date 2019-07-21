@@ -77,9 +77,9 @@ module Client = struct
         | Colombe.State.Read _ | Return _ | Error _ ->
           failwith "Inner process of STARTTLS flow MUST start with a Write operation"
         | Colombe.State.Write { buffer; off; len; k= _; } ->
-          Log.app (fun m -> m "Fiber start with: @[<hov>%a@]" (Hxd_string.pp hxd_config) (Bytes.sub_string buffer off len)) ;
+          Log.app (fun m -> m "Fiber start with: @[<hov>%a@]" (Hxd_string.pp hxd_config) (String.sub buffer off len)) ;
 
-          match Tls.Engine.send_application_data state [ Cstruct.of_bytes buffer ~off ~len ] with
+          match Tls.Engine.send_application_data state [ Cstruct.of_string buffer ~off ~len ] with
           | Some (state, send) -> { t with q= V (send, Send state) }
           | None -> t (* XXX(dinosaure): [None] is an error? *) )
     | V (_, Send_handshake state) ->
@@ -102,8 +102,8 @@ module Client = struct
           Log.app (fun m -> m "Fiber wants to read") ;
           V ((), Wait state)
         | Write { buffer; off; len; k= _ } ->
-          Log.app (fun m -> m "Fiber wants to write: @[<hov>%a@]" (Hxd_string.pp hxd_config) (Bytes.sub_string buffer off len)) ;
-          ( match Tls.Engine.send_application_data state [ Cstruct.of_bytes buffer ~off ~len ] with
+          Log.app (fun m -> m "Fiber wants to write: @[<hov>%a@]" (Hxd_string.pp hxd_config) (String.sub buffer off len)) ;
+          ( match Tls.Engine.send_application_data state [ Cstruct.of_string buffer ~off ~len ] with
             | Some (state, send) -> V (send, Send state)
             | None -> V ((), Wait state) (* TODO! *) )
         | Return _ | Error _ ->
@@ -164,9 +164,9 @@ module Client = struct
           Cstruct.blit_to_bytes data 0 buffer off len ;
           go (Cstruct.shift data len) (k len)
         | Write { buffer; off; len; k= _; } as fiber ->
-          Log.app (fun m -> m "Fiber wants to write: @[<hov>%a@]" (Hxd_string.pp hxd_config) (Bytes.sub_string buffer off len)) ;
+          Log.app (fun m -> m "Fiber wants to write: @[<hov>%a@]" (Hxd_string.pp hxd_config) (String.sub buffer off len)) ;
 
-          ( match Tls.Engine.send_application_data state [ Cstruct.of_bytes ~off ~len buffer ] with
+          ( match Tls.Engine.send_application_data state [ Cstruct.of_string ~off ~len buffer ] with
             | Some (state, send) ->
               Ok { fiber= Fiber fiber; q= V (send, Send state); }
             | None -> assert false )

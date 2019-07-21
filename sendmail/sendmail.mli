@@ -57,7 +57,7 @@ val make_state :
   from:Reverse_path.t ->
   recipients:Forward_path.t list ->
   Auth.authenticator option ->
-  (bytes * int * int) stream -> 'x state
+  (string * int * int) stream -> 'x state
 
 val make : 'x state -> 'x t
 

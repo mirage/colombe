@@ -8,7 +8,7 @@ type error = No_enough_space
 val pp_error : error Fmt.t
 
 type state =
-  | Write of { buffer : bytes
+  | Write of { buffer : string
              ; off : int
              ; len : int
              ; continue : int -> state }
@@ -18,4 +18,4 @@ type state =
 val safe : (encoder -> state) -> encoder -> state
 val flush : (encoder -> state) -> encoder -> state
 val write : string -> encoder -> unit
-val blit : buf:bytes -> off:int -> len:int -> encoder -> unit
+val blit : buf:string -> off:int -> len:int -> encoder -> unit

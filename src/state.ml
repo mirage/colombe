@@ -3,7 +3,7 @@ type ('s, 'error) process =
             ; off : int
             ; len : int
             ; k : int -> ('s, 'error) process }
-  | Write of { buffer : bytes
+  | Write of { buffer : string
              ; off : int
              ; len : int
              ; k : int -> ('s, 'error) process }
@@ -27,7 +27,7 @@ module type PROTOCOL = sig
   val encode : ('o t * 'o) -> (ctx -> ('s, error) process) -> ctx -> ('s, error) process
 
   val encode_raw
-    : (bytes * int * int) ->
+    : (string * int * int) ->
       (ctx -> int -> ('s, error) process) ->
       ctx -> ('s, error) process
   val decode_raw
@@ -50,7 +50,7 @@ module Make (State : Sigs.FUNCTOR) (Protocol : PROTOCOL) = struct
   type action =
     | Send : 'x Protocol.t * 'x -> action
     | Recv : 'x Protocol.t -> action
-    | Write of { buf : bytes; off : int; len : int; }
+    | Write of { buf : string; off : int; len : int; }
     | Read of { buf : bytes; off : int; len : int; }
     | Close
 

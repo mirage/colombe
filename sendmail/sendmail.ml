@@ -165,7 +165,7 @@ module Send_mail_p = struct
     | _, (#Reply.t as v) -> Error (Unexpected_reply (w, v))
 
   let encode_raw
-    : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
+    : (string * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
     = fun (buf, off, len) k ctx ->
       let rec go = function
         | Encoder.Write { buffer; off; len; continue; } ->
@@ -208,7 +208,7 @@ module Send_mail_s = struct
     ; domain : Domain.t
     ; from : from
     ; recipients : recipient list
-    ; mail : (bytes * int * int) stream
+    ; mail : (string * int * int) stream
     ; auth : Rfc1869.t option
     ; logger : Rfc1869.t option
     ; encoding : Rfc1869.t }

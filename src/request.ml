@@ -304,7 +304,7 @@ module Encoder = struct
     let res = Buffer.create 16 in
     let rec go x : (string, error) result = match x with
       | Write { buffer; off; len; continue } ->
-        Buffer.add_subbytes res buffer off len ;
+        Buffer.add_substring res buffer off len ;
         go (continue len)
       | Error error -> Error error
       | Ok -> Ok (Buffer.contents res) in
