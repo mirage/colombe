@@ -1,6 +1,12 @@
 (executable
  (name test)
+ (modules test)
  (libraries colombe alcotest))
+
+(executable
+ (name test_sendmail)
+ (modules test_sendmail)
+ (libraries sendmail colombe colombe.mrmime mrmime alcotest))
 
 (alias
  (name runtest)

@@ -1,4 +1,4 @@
-type encoder
+type encoder =
 
 val io_buffer_size : int
 val encoder : unit -> encoder

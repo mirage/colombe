@@ -216,7 +216,7 @@ module Decoder = struct
         let raw_crlf, off, len= peek_while_eol decoder in
         decoder.pos <- decoder.pos + len ;
         if end_of_input decoder = decoder.pos
-        then prompt (go code lines) decoder
+        then prompt (go code (Bytes.sub_string raw_crlf off (len - 2) :: lines)) decoder
         else go code (Bytes.sub_string raw_crlf off (len - 2) :: lines) decoder
       | Some chr ->
         leave_with decoder (Unexpected_char chr)
