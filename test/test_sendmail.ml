@@ -77,5 +77,46 @@ let test_0 () =
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> is_empty ()
 
+let test_1 () =
+  Alcotest.test_case "usual with authentication" `Quick @@ fun () ->
+  let ctx = Colombe.State.make_ctx () in
+  let auth = Auth.make ~username:"romain" "foobar" in
+  let state = Sendmail.make_state
+      ~encoding:Mime.bit8
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      ~from:(Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
+      ~recipients:[ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (Some auth) (fun () -> None) in
+  let state = Sendmail.make state in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [ "220 smtp.gmail.com ESTMP - gsmtp"
+      ; "250-smtp.gmail.com at your service, [8.8.8.8]"
+      ; "250-SIZE 0"
+      ; "250-8BITMIME"
+      ; "250-AUTH LOGIN PLAIN"
+      ; "250-ENHANCEDSTATUSCODES"
+      ; "250 CHUNKING"
+      ; "334 "
+      ; "235 authenticated"
+      ; "250 <romain.calascibetta@gmail.com> as sender"
+      ; "250 <anil@recoil.org> as recipient"
+      ; "354 "
+      ; "250 Sended!"
+      ; "221 Closing connection." ]
+      [ "EHLO gmail.com"
+      ; "AUTH PLAIN"
+      ; Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar")
+      ; "MAIL FROM:<romain.calascibetta@gmail.com> BODY=8BITMIME"
+      ; "RCPT TO:<anil@recoil.org>"
+      ; "DATA"
+      ; "."
+      ; "QUIT" ] in
+  let fiber = Sendmail.run unix rdwr () state ctx in
+  match Unix_scheduler.prj fiber with
+  | Error err -> Fmt.failwith "Got and error: %a" Sendmail.pp_error err
+  | Ok _ -> is_empty ()
+
 let () =
-  Alcotest.run "sendmail" [ "mock", [ test_0 () ] ]
+  Alcotest.run "sendmail" [ "mock", [ test_0 ()
+                                    ; test_1 () ] ]
