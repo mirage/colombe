@@ -246,7 +246,6 @@ let rec transition (q:'s Send_mail_s.t) (e:State.event) =
 
     match q.q, e with
     | `q14, Recv (PP_250, _ehlo :: exts) ->
-      Fmt.epr "response: %a.\n%!" Fmt.(Dump.list string) (_ehlo :: exts) ;
       let exts = List.map
           (fun ext -> match Astring.String.cut ~sep:" " ext with
              | Some (ext, args) -> (ext, args)
@@ -262,8 +261,6 @@ let rec transition (q:'s Send_mail_s.t) (e:State.event) =
 
         let q = match List.assoc_opt Mime.description.elho exts with
           | Some _ -> q | None -> { q with encoding= Mime.inj Mime.none } in
-
-        Fmt.epr ">>> exts: %a.\n%!" Fmt.(Dump.list (pair string string)) exts ;
 
         match q.auth, List.assoc_opt Auth.description.elho exts with
         | Some _, None -> assert false (* TODO *)

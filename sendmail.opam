@@ -25,6 +25,7 @@ depends: [
   "ocaml"      {>= "4.03.0"}
   "dune"       {build}
   "colombe"
+  "mrmime"
   "alcotest"   {with-test}
   "crowbar"    {with-test}
 ]
