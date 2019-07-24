@@ -20,6 +20,7 @@ build: [
 pin-depends: [
   [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
   [ "hxd.dev" "git+https://github.com/dinosaure/hxd.git" ]
+  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git" ]
 ]
 
 depends: [
@@ -36,4 +37,8 @@ depends: [
   "domain-name" {>= "0.2.1"}
   "alcotest"   {with-test}
   "crowbar"    {with-test}
+]
+
+depopts: [
+  "mrmime"
 ]
