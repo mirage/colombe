@@ -20,6 +20,7 @@ build: [
 pin-depends: [
   [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
   [ "hxd.dev" "git+https://github.com/dinosaure/hxd.git" ]
+  [ "ke.dev" "git+https://github.com/mirage/ke.git" ]
   [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git" ]
 ]
 
