@@ -11,24 +11,18 @@ description: """This package purpose is to provide an implementation of the
 RFC 5321 about SMTP standard in OCaml.
 """
 
-build: [
-  [ "dune" "subst" ]
-  [ "dune" "build" "-p" name "-j" jobs ]
-  [ "dune" "runtest" "-p" name "-j" jobs ] {with-test}
-]
+build: [ "dune" "build" "-p" name "-j" jobs ]
+run-test: [ "dune" "runtest" "-p" name "-j" jobs ]
 
 pin-depends: [
-  [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
-  [ "hxd.dev" "git+https://github.com/dinosaure/hxd.git" ]
-  [ "ke.dev" "git+https://github.com/mirage/ke.git" ]
   [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git" ]
 ]
 
 depends: [
-  "ocaml"      {>= "4.03.0"}
-  "dune"       {build}
+  "ocaml" {>= "4.03.0"}
+  "dune" {build}
   "angstrom"
-  "ipaddr"     {>= "2.9.0"}
+  "ipaddr" {>= "2.9.0"}
   "fmt"
   "tls"
   "logs"
@@ -36,8 +30,8 @@ depends: [
   "rresult"
   "hxd"
   "domain-name" {>= "0.2.1"}
-  "alcotest"   {with-test}
-  "crowbar"    {with-test}
+  "alcotest" {with-test}
+  "crowbar" {dev & with-test}
 ]
 
 depopts: [
