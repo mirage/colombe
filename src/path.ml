@@ -111,11 +111,13 @@ module Encoder = struct
 
   let to_string x = match x.rest with
     | [] ->
-      Fmt.strf "<%s@%s>" (local_to_string x.local) (Domain.Encoder.to_string x.domain)
+      Fmt.strf "<%s@%s>" (local_to_string x.local) (Domain.to_string x.domain)
     | rest ->
       Fmt.strf "<%a:%s@%s>"
         Fmt.(list ~sep:(const string ",")
-               (prefix (const string "@") (using Domain.Encoder.to_string string))) rest
+               (prefix
+                  (const string "@")
+                  (using Domain.to_string string))) rest
         (local_to_string x.local)
-        (Domain.Encoder.to_string x.domain)
+        (Domain.to_string x.domain)
 end

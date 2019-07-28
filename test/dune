@@ -1,4 +1,11 @@
 (test
  (name test)
+ (modules test)
  (package colombe)
  (libraries colombe alcotest))
+
+(test
+ (name test_sendmail)
+ (modules test_sendmail)
+ (package sendmail)
+ (libraries sendmail colombe colombe.mrmime mrmime alcotest))

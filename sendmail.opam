@@ -15,25 +15,15 @@ build: [ "dune" "build" "-p" name "-j" jobs ]
 run-test: [ "dune" "runtest" "-p" name "-j" jobs ]
 
 pin-depends: [
+  [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
   [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git" ]
 ]
 
 depends: [
   "ocaml" {>= "4.03.0"}
   "dune" {build}
-  "angstrom"
-  "ipaddr" {>= "2.9.0"}
-  "fmt"
-  "tls"
-  "logs"
-  "base64"
-  "rresult"
-  "hxd"
-  "domain-name" {>= "0.2.1"}
+  "colombe"
+  "mrmime" {with-test}
   "alcotest" {with-test}
   "crowbar" {dev & with-test}
-]
-
-depopts: [
-  "mrmime"
 ]
