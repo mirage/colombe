@@ -146,7 +146,7 @@ let test_requests_0 () =
     Alcotest.test_case (String.sub raw 0 (String.length raw - 2)) `Quick @@ fun () ->
     match Request.Decoder.of_string raw with
     | Ok result -> Alcotest.(check request) raw expected result
-    | Error err -> Alcotest.failf "%a." Request.Decoder.pp_error err
+    | Error err -> Alcotest.failf "%a." Decoder.pp_error err
   in
   List.map make (List.combine requests results)
 
@@ -155,7 +155,7 @@ let test_requests_1 () =
     Alcotest.test_case (Fmt.to_to_string Request.pp value) `Quick @@ fun () ->
     match Request.Encoder.to_string value with
     | Ok result -> Alcotest.(check string) (Fmt.to_to_string Request.pp value) raw result
-    | Error err -> Alcotest.failf "%a." Request.Encoder.pp_error err
+    | Error err -> Alcotest.failf "%a." Encoder.pp_error err
   in
   List.map make (List.combine results requests)
 
@@ -274,7 +274,7 @@ let test_replies_0 () =
     Alcotest.test_case (get_first_line raw) `Quick @@ fun () ->
     match Reply.Decoder.of_string raw with
     | Ok result -> Alcotest.(check reply) raw expected result
-    | Error err -> Alcotest.failf "%a." Reply.Decoder.pp_error err
+    | Error err -> Alcotest.failf "%a." Decoder.pp_error err
   in
   List.map make (List.combine replies results)
 
@@ -283,7 +283,7 @@ let test_replies_1 () =
     Alcotest.test_case (Fmt.to_to_string Reply.pp value) `Quick @@ fun () ->
     match Reply.Encoder.to_string value with
     | Ok result -> Alcotest.(check string) (Fmt.to_to_string Reply.pp value) raw result
-    | Error err -> Alcotest.failf "%a." Reply.Encoder.pp_error err
+    | Error err -> Alcotest.failf "%a." Encoder.pp_error err
   in
   List.map make (List.combine results replies)
 

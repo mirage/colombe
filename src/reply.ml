@@ -187,7 +187,7 @@ let v code lines = match code with
   | code -> `Other (code, lines)
 
 module Decoder = struct
-  include Decoder
+  open Decoder
 
   let is_digit = function '0' .. '9' -> true | _ -> false
 
@@ -216,7 +216,7 @@ module Decoder = struct
         let raw_crlf, off, len= peek_while_eol decoder in
         decoder.pos <- decoder.pos + len ;
         if end_of_input decoder = decoder.pos
-        then prompt (go code lines) decoder
+        then prompt (go code (Bytes.sub_string raw_crlf off (len - 2) :: lines)) decoder
         else go code (Bytes.sub_string raw_crlf off (len - 2) :: lines) decoder
       | Some chr ->
         leave_with decoder (Unexpected_char chr)
@@ -265,7 +265,7 @@ module Decoder = struct
 end
 
 module Encoder = struct
-  include Encoder
+  open Encoder
 
   let crlf encoder = write "\r\n" encoder
 
@@ -314,7 +314,7 @@ module Encoder = struct
     let res = Buffer.create 16 in
     let rec go x : (string, error) result = match x with
       | Write { buffer; off; len; continue } ->
-        Buffer.add_subbytes res buffer off len ;
+        Buffer.add_substring res buffer off len ;
         go (continue len)
       | Error error -> Error error
       | Ok -> Ok (Buffer.contents res) in
