@@ -22,12 +22,13 @@ pin-depends: [
 ]
 
 depends: [
-  "ocaml"      {>= "4.03.0"}
-  "dune"       {build}
+  "ocaml" {>= "4.03.0"}
+  "dune" {build}
   "sendmail"
   "domain-name"
   "lwt"
   "tls"
-  "alcotest"   {with-test}
-  "crowbar"    {with-test}
+  "x509" {>= "0.7.0"}
+  "alcotest" {with-test}
+  "crowbar" {with-test}
 ]
