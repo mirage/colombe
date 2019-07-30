@@ -6,6 +6,7 @@ maintainer:   [ "Charles-Edouard Lecat" "Romain Calascibetta <romain.calascibett
 homepage:     "https://github.com/dinosaure/colombe"
 bug-reports:  "https://github.com/dinosaure/colombe/issues"
 dev-repo:     "git+https://github.com/dinosaure/colombe.git"
+doc:          "https://dinosaure.github.io/colombe/"
 synopsis:     "SMTP protocol in OCaml"
 description: """This package purpose is to provide an implementation of the
 RFC 5321 about SMTP standard in OCaml.

@@ -7,6 +7,7 @@ homepage:     "https://github.com/dinosaure/colombe"
 bug-reports:  "https://github.com/dinosaure/colombe/issues"
 dev-repo:     "git+https://github.com/dinosaure/colombe.git"
 synopsis:     "SMTP protocol in OCaml"
+doc:          "https://dinosaure.github.io/colombe/"
 description: """This package purpose is to provide an implementation of the
 RFC 5321 about SMTP standard in OCaml.
 """
