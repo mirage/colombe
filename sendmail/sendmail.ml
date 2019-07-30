@@ -96,7 +96,7 @@ module Send_mail_p = struct
     | Encoder of Encoder.error
     | Unexpected_request : 'x t * Request.t -> error
     | Unexpected_reply : 'x t * Reply.t -> error
-    | Auth_error
+    | Auth_error | No_auth
     | Invalid_state
 
   let pp_error ppf = function
@@ -105,6 +105,7 @@ module Send_mail_p = struct
     | Unexpected_request (w, v) -> Fmt.pf ppf "(Unexpected_request expect:%a,@ received:@[<hov>%a@])" pp w Request.pp v
     | Unexpected_reply (w, v) -> Fmt.pf ppf "(Unexpected_reply expect:%a,@ received:@[<hov>%a@])" pp w Reply.pp v
     | Auth_error -> Fmt.string ppf "Auth_error"
+    | No_auth -> Fmt.string ppf "No_auth"
     | Invalid_state -> Fmt.pf ppf "Invalid_state"
 
   let uncast
@@ -222,6 +223,7 @@ let to_response : type a. a Send_mail_p.t -> a -> Rfc1869.decode = fun k txts ->
   | Send_mail_p.TP_334 -> Rfc1869.Response { code= 334; txts; }
   | Send_mail_p.PP_250 -> Rfc1869.Response { code= 250; txts; }
   | Send_mail_p.PP_235 -> Rfc1869.Response { code= 235; txts; }
+  | Send_mail_p.PN_501 -> Rfc1869.Response { code= 501; txts; }
   | _ -> Fmt.failwith "By duality, [to_response] should never receive something else than TP-334, PP-250 and PP-235"
 
 let ok x y = Ok (x, y)
@@ -263,17 +265,16 @@ let rec transition (q:'s Send_mail_s.t) (e:State.event) =
           | Some _ -> q | None -> { q with encoding= Mime.inj Mime.none } in
 
         match q.auth, List.assoc_opt Auth.description.elho exts with
-        | Some _, None -> assert false (* TODO *)
-        | None, Some _ ->
+        | Some _, None -> Rresult.R.error (Send_mail_p.No_auth, q)
+        | None, Some _ | None, None ->
           (* try without authentication *)
           transition { q with q= `q2 } e
-        | None, None -> assert false (* TODO *)
         | Some auth, Some args ->
           let Rfc1869.V (auth, (module Auth), inj) = Rfc1869.prj auth in
           match Auth.ehlo auth args with
           | Ok auth ->
             ok $ send Auth (inj auth) $ { q with q= `q15; auth= Some (inj auth); }
-          | Error _ -> Error (Send_mail_p.Auth_error, q) )
+          | Error _ -> Rresult.R.error (Send_mail_p.Auth_error, q) )
     | `q15, Send Auth ->
       ( match q.auth with
         | None -> Error (Send_mail_p.Invalid_state, q)
@@ -283,6 +284,10 @@ let rec transition (q:'s Send_mail_s.t) (e:State.event) =
           | Some (Rfc1869.Recv_code 235) -> ok $ recv Send_mail_p.PP_235 $ { q with q= `q16; }
           | Some (Rfc1869.Recv_code 250) -> ok $ recv Send_mail_p.PP_250 $ { q with q= `q16; }
           | Some (Rfc1869.Recv_code 334) -> ok $ recv Send_mail_p.TP_334 $ { q with q= `q16; }
+          | Some (Rfc1869.Recv_code _) ->
+            transition { q with q= `q2; auth= Some (inj auth) } (Recv (PP_250, []))
+          | Some (Rfc1869.Send _) ->
+            transition { q with q= `q2; auth= Some (inj auth) } (Recv (PP_250, []))
           | Some _ | None -> transition { q with q= `q2; auth= Some (inj auth) } (Recv (PP_250, [])) (* TODO: or error? *) )
     | `q16, Recv (k, v) ->
       ( match q.auth with
@@ -355,6 +360,20 @@ let run
     let ( >>= ) = impl.bind in
     let return = impl.return in
 
+    (* XXX(dinosaure): [ctx] has side-effects, it's _safe_ to re-use it to quit
+       properly. *)
+    let properly_quit err =
+      let rec go = function
+        | Read { buffer; off; len; k; } ->
+          rdwr.rd flow buffer off len >>= fun len ->
+          go (k len)
+        | Write { buffer; off; len; k; } ->
+          rdwr.wr flow buffer off len >>= fun () -> go (k len)
+        | Return () -> return (Rresult.R.error err)
+        | Error err -> return (Rresult.R.error err) in
+        let fiber0 = Send_mail_p.decode Send_mail_p.PP_221 (fun _ _ -> Return ()) in
+        let fiber1 = Send_mail_p.encode (Send_mail_p.Quit, ()) fiber0 in
+        go (fiber1 ctx) in
     let rec go = function
       | Read { buffer; off; len; k; } ->
         rdwr.rd flow buffer off len >>= fun len ->
@@ -362,7 +381,12 @@ let run
       | Write { buffer; off; len; k; } ->
         rdwr.wr flow buffer off len >>= fun () -> go (k len)
       | Return v -> return (Ok v)
-      | Error err -> return (Rresult.R.error err) in
+      | Error (Send_mail_p.Unexpected_reply (Send_mail_p.PP_235, `PN_501 _)) ->
+        properly_quit Send_mail_p.Auth_error
+      | Error Send_mail_p.Auth_error ->
+        properly_quit Send_mail_p.Auth_error
+      | Error err ->
+        return (Rresult.R.error err) in
     let rec pp_220 = function
       | Read { buffer; off; len; k; } ->
         rdwr.rd flow buffer off len >>= fun len ->
