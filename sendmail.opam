@@ -16,14 +16,13 @@ run-test: [ "dune" "runtest" "-p" name "-j" jobs ]
 
 pin-depends: [
   [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
-  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git" ]
 ]
 
 depends: [
   "ocaml" {>= "4.03.0"}
   "dune" {build}
-  "colombe"
-  "mrmime" {with-test}
+  "colombe" {= version}
+  "mrmime" {>= "0.1.0" & with-test}
   "alcotest" {with-test}
-  "crowbar" {dev & with-test}
+  "crowbar" {with-test}
 ]
