@@ -11,11 +11,9 @@ description: """This package purpose is to provide an implementation of the
 RFC 5321 about SMTP standard in OCaml.
 """
 
-build: [
-  [ "dune" "subst" ]
-  [ "dune" "build" "-p" name "-j" jobs ]
-  [ "dune" "runtest" "-p" name "-j" jobs ] {with-test}
-]
+build: [ "dune" "build" "-p" name "-j" jobs ]
+run-test:  [ "dune" "runtest" "-p" name "-j" jobs ]
+
 
 pin-depends: [
   [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
@@ -24,7 +22,7 @@ pin-depends: [
 depends: [
   "ocaml" {>= "4.03.0"}
   "dune" {build}
-  "sendmail"
+  "sendmail" {= version}
   "domain-name"
   "lwt"
   "tls"
