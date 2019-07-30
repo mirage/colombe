@@ -114,9 +114,67 @@ let test_1 () =
       ; "QUIT" ] in
   let fiber = Sendmail.run unix rdwr () state ctx in
   match Unix_scheduler.prj fiber with
-  | Error err -> Fmt.failwith "Got and error: %a" Sendmail.pp_error err
+  | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> is_empty ()
+
+let test_2 () =
+  Alcotest.test_case "bad authentication" `Quick @@ fun () ->
+  let ctx = Colombe.State.make_ctx () in
+  let auth = Auth.make ~username:"romain" "foobar" in
+  let state = Sendmail.make_state
+      ~encoding:Mime.bit8
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      ~from:(Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
+      ~recipients:[ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (Some auth) (fun () -> None) in
+  let state = Sendmail.make state in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [ "220 smtp.gmail.com ESMTP - gsmtp"
+      ; "250-smtp.gmail.com at your service, [8.8.8.8]"
+      ; "250-SIZE 0"
+      ; "250-8BITMIME"
+      ; "250-AUTH LOGIN PLAIN"
+      ; "250-ENHANCEDSTATUSCODES"
+      ; "250 CHUNKING"
+      ; "334 "
+      ; "501 Authentication rejected!"
+      ; "221 Closing connection." ]
+      [ "EHLO gmail.com"
+      ; "AUTH PLAIN"
+      ; Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar")
+      ; "QUIT" ] in
+  let fiber = Sendmail.run unix rdwr () state ctx in
+  match Unix_scheduler.prj fiber with
+  | Error _ -> is_empty () (* XXX(dinosaure): check if the error is [Auth_error]? *)
+  | Ok _ -> Fmt.failwith "Should fail with [Auth_error]"
+
+let test_3 () =
+  Alcotest.test_case "PLAIN mechanism unavailable" `Quick @@ fun () ->
+  let ctx = Colombe.State.make_ctx () in
+  let auth = Auth.make ~username:"romain" "foobar" in
+  let state = Sendmail.make_state
+      ~encoding:Mime.bit8
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      ~from:(Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
+      ~recipients:[ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (Some auth) (fun () -> None) in
+  let state = Sendmail.make state in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [ "220 smtp.gmail.com ESMTP - gsmtp"
+      ; "250-smtp.gmail.com at your service, [8.8.8.8]"
+      ; "250 AUTH LOGIN"
+      ; "221 Closing connection" ]
+      [ "EHLO gmail.com"
+      ; "QUIT" ] in
+  let fiber = Sendmail.run unix rdwr () state ctx in
+  match Unix_scheduler.prj fiber with
+  | Error _ -> is_empty () (* XXX(dinosaure): check if the error is [Auth_error]? *)
+  | Ok _ -> Fmt.failwith "Should fail with [Auth_missing_mechanism]"
 
 let () =
   Alcotest.run "sendmail" [ "mock", [ test_0 ()
-                                    ; test_1 () ] ]
+                                    ; test_1 ()
+                                    ; test_2 ()
+                                    ; test_3 () ] ]
