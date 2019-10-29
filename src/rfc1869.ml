@@ -59,7 +59,7 @@ module Make (Functor : Sigs.FUNCTOR) = struct
     let () =
       let instance = X.instance in
       Hashtbl.add handlers
-        (Obj.extension_id [%extension_constructor T])
+        (Obj.Extension_constructor.id [%extension_constructor T])
         (function T x -> V (x, instance, (fun x -> T x))
                 | _ -> raise Not_found)
   end
@@ -78,7 +78,7 @@ module Make (Functor : Sigs.FUNCTOR) = struct
     in
     go
       (Hashtbl.find_all handlers
-         (Obj.extension_id (Obj.extension_constructor t)))
+         (Obj.Extension_constructor.id (Obj.Extension_constructor.of_val t)))
 
   let eq
     : type a. t -> a extension -> a option
