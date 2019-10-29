@@ -1,11 +1,21 @@
-(test
+(executable
  (name test)
  (modules test)
- (package colombe)
  (libraries colombe alcotest))
 
-(test
+(alias
+ (name runtest)
+ (deps (:test test.exe))
+ (package colombe)
+ (action (run %{test} --color=always)))
+
+(executable
  (name test_sendmail)
  (modules test_sendmail)
- (package sendmail)
  (libraries sendmail colombe colombe.mrmime mrmime alcotest))
+
+(alias
+ (name runtest)
+ (deps (:test test_sendmail.exe))
+ (package sendmail)
+ (action (run %{test} --color=always)))
