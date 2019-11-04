@@ -9,6 +9,9 @@ env:
   - DISTRO="debian-stable"
   - TESTS=true
   matrix:
+  - PACKAGE="colombe" OCAML_VERSION="4.07"
+  - PACKAGE="sendmail" OCAML_VERSION="4.07"
+  - PACKAGE="sendmail-lwt" OCAML_VERSION="4.07"
   - PACKAGE="colombe" OCAML_VERSION="4.08.1"
   - PACKAGE="sendmail" OCAML_VERSION="4.08.1"
   - PACKAGE="sendmail-lwt" OCAML_VERSION="4.08.1"
