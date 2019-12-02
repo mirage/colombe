@@ -8,8 +8,10 @@ end
 
 type on = bool
 
+open Colombe.Rfc1869
+
 module Client (L : Logs.LOG) = struct
-  type error = Colombe.Rfc1869.error
+  type nonrec error = error
   type t = on
 
   type code =
@@ -24,9 +26,7 @@ module Client (L : Logs.LOG) = struct
 
   let ehlo _ _ = (* assert (args = ""); *) Ok true
 
-  let action _ = assert false
-  let encode _ = assert false
-  let handle _ = assert false
+  let next _t = Ok Noop
 
   let is_sp = (=) ' '
   let is_digit = function

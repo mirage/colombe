@@ -9,13 +9,13 @@
  (public_name colombe.mime)
  (modules mime)
  (libraries colombe))
-
-(library
- (name starttls)
- (public_name colombe.starttls)
- (modules starttls)
- (libraries logs hxd.string domain-name tls colombe))
-
+ 
+; (library
+;  (name starttls)
+;  (public_name colombe.starttls)
+;  (modules starttls)
+;  (libraries logs hxd.string domain-name tls colombe))
+; 
 (library
  (name enhanced_status_codes)
  (public_name colombe.enhanced_status_codes)

@@ -6,7 +6,10 @@ val extension : Client.t Colombe.Rfc1869.extension
 val inj : Client.t -> Colombe.Rfc1869.t
 
 type state = Client.t
-type fiber
+type 'e error constraint 'e = [> Rresult.R.msg ]
+type fiber = Fiber : 'error error * ('s, 'error) Colombe.State.process -> fiber
+type f = private fiber
 
-val fiber : ('s, 'error) Colombe.State.process -> fiber
-val make : fiber -> ?domain:[ `host ] Domain_name.t -> Tls.Config.client -> state
+val fiber : ('s, 'e) Colombe.State.process -> f * 'e error
+val make : f -> ?domain:[ `host ] Domain_name.t -> Tls.Config.client -> state
+val extract_fiber : state -> f

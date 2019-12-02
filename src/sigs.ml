@@ -2,7 +2,6 @@ module type FUNCTOR = sig type 'a t end
 
 type (+'a, 't) io
 type ('l, 'r) either = L of 'l | R of 'r
-type 'a or_error = ('a, [ `Msg of string ]) result
 
 type 't impl =
   { bind : 'a 'b. ('a, 't) io -> ('a -> ('b, 't) io) -> ('b, 't) io

@@ -1,55 +1,39 @@
-type ('s, 'error) process =
-  | Read of { buffer : bytes; off: int; len: int; k: int -> ('s, 'error) process }
-  | Write of { buffer : string; off: int; len: int; k: int -> ('s, 'error) process }
-  | Return of 's
-  | Error of 'error
+type ('a, 'err) t =
+  | Read of { buffer : bytes; off: int; len: int; k: int -> ('a, 'err) t }
+  | Write of { buffer : string; off: int; len: int; k: int -> ('a, 'err) t }
+  | Return of 'a
+  | Error of 'err
 
-type ctx =
+type context =
   { encoder : Encoder.encoder
   ; decoder : Decoder.decoder }
 
-val make_ctx : unit -> ctx
+val make_context : unit -> context
 
-module type PROTOCOL = sig
-  type 'a t
+module type S = sig
+  type 'a send
+  type 'a recv
 
   type error
 
-  val decode : 'i t -> (ctx -> 'i -> ('s, error) process) -> ctx -> ('s, error) process
-  val encode : ('o t * 'o) -> (ctx -> ('s, error) process) -> ctx -> ('s, error) process
-
-  val encode_raw
-    : (string * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
-  val decode_raw
-    : (bytes * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
+  val encode : Encoder.encoder -> 'a send -> 'a -> error Encoder.state
+  val decode : Decoder.decoder -> 'a recv -> ('a, error) Decoder.state
 end
 
-module Make (State : Sigs.FUNCTOR) (Protocol : PROTOCOL) : sig
-  type 's state = 's State.t
+module Scheduler (Value : S) : sig
+  val bind : ('a, 'err) t -> f:('a -> ('b, 'err) t) -> ('b, 'err) t
 
-  type event =
-    | Accept
-    | Recv : 'x Protocol.t * 'x -> event
-    | Send : 'x Protocol.t -> event
-    | Write of int
-    | Read of int
-    | Close
+  val ( let* ) : ('a, 'err) t -> ('a -> ('b, 'err) t) -> ('b, 'err) t
+  val ( >>= ) : ('a, 'err) t -> ('a -> ('b, 'err) t) -> ('b, 'err) t
 
-  type action =
-    | Send : 'x Protocol.t * 'x -> action
-    | Recv : 'x Protocol.t -> action
-    | Write of { buf : string; off : int; len : int; }
-    | Read of { buf : bytes; off : int; len : int; }
-    | Close
+  val encode : context -> 'a Value.send -> 'a -> (context -> ('b, Value.error) t) -> ('b, Value.error) t
+  val decode : context -> 'a Value.recv -> (context -> 'a -> ('b, Value.error) t) -> ('b, Value.error) t
 
-  type 's t
-  type 's transition = 's state -> event -> (action * 's state, Protocol.error * 's state) result
+  val send : context -> 'a Value.send -> 'a -> (unit, Value.error) t
+  val recv : context -> 'a Value.recv -> ('a, Value.error) t
 
-  val send : 'x Protocol.t -> 'x -> action
-  val recv : 'x Protocol.t -> action
-  val write : buf:string -> off:int -> len:int -> action
-  val read : buf:bytes -> off:int -> len:int -> action
+  val return : 'v -> ('v, 'err) t
+  val fail : 'err -> ('v, 'err) t
 
-  val run : 's t -> ctx -> event -> ('s state, Protocol.error) process
-  val make : init:'s state -> 's transition -> 's t
+  val error_msgf : ('a, Format.formatter, unit, ('b, [> Rresult.R.msg ]) t) format4 -> 'a
 end

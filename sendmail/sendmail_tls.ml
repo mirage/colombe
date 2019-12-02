@@ -28,18 +28,23 @@ module Send_mail_tls_p = struct
     | _ -> false
 
   type error =
-    | Decoder of Decoder.error
-    | Encoder of Encoder.error
-    | Unexpected_request : 'x t * Request.t -> error
-    | Unexpected_reply : 'x t * Reply.t -> error
-    | Invalid_state
+    [ `Decoder of Decoder.error
+    | `Encoder of Encoder.error
+    | `Unexpected_request of Request.t cast_error
+    | `Unexpected_reply of Reply.t cast_error
+    | `Invalid_state
+    | `Sendmail_error
+    | `Msg of string ]
+  and 'v cast_error = Cast_error : 'x t * 'v -> 'v cast_error
 
   let pp_error ppf = function
-    | Decoder err -> Decoder.pp_error ppf err
-    | Encoder err -> Encoder.pp_error ppf err
-    | Unexpected_request (w, v) -> Fmt.pf ppf "(Unexpected_request expect:%a,@ received:@[<hov>%a]@)" pp w Request.pp v
-    | Unexpected_reply (w, v) -> Fmt.pf ppf "(Unexpected_reply expect:%a,@ received:@[<hov>%a@])" pp w Reply.pp v
-    | Invalid_state -> Fmt.pf ppf "Invalid_state"
+    | `Decoder err -> Decoder.pp_error ppf err
+    | `Encoder err -> Encoder.pp_error ppf err
+    | `Unexpected_request (Cast_error (w, v)) -> Fmt.pf ppf "(Unexpected_request expect:%a,@ received:@[<hov>%a]@)" pp w Request.pp v
+    | `Unexpected_reply (Cast_error (w, v)) -> Fmt.pf ppf "(Unexpected_reply expect:%a,@ received:@[<hov>%a@])" pp w Reply.pp v
+    | `Invalid_state -> Fmt.pf ppf "Invalid_state"
+    | `Sendmail_error err -> Sendmail.pp_error ppf err
+    | `Msg s -> Fmt.string ppf s
 
   let uncast
     : type o. o t -> o -> (Request.t, Reply.t) either
@@ -58,7 +63,7 @@ module Send_mail_tls_p = struct
         | Encoder.Write { buffer; off; len; continue; } ->
           let continue n = go (continue n) in
           Write { buffer; off; len; k= continue; }
-        | Encoder.Error err -> Error (Encoder err) in
+        | Encoder.Error err -> Error (`Encoder err) in
       let res = match uncast w v with
         | L request -> Request.Encoder.request request ctx.encoder
         | R reply -> Reply.Encoder.response reply ctx.encoder in
@@ -70,8 +75,8 @@ module Send_mail_tls_p = struct
       | Helo, `Hello domain -> k ctx domain
       | PP_220, `PP_220 txts -> k ctx txts
       | PP_250, `PP_250 txts -> k ctx txts
-      | _, (#Request.t as v) -> Error (Unexpected_request (w, v))
-      | _, (#Reply.t as v) -> Error (Unexpected_reply (w, v))
+      | _, (#Request.t as v) -> Error (`Unexpected_request (Cast_error (w, v)))
+      | _, (#Reply.t as v) -> Error (`Unexpected_reply (Cast_error (w, v)))
 
   let encode_raw
     : (string * int * int) -> (ctx -> int -> ('s, error) process) -> ctx -> ('s, error) process
@@ -83,7 +88,7 @@ module Send_mail_tls_p = struct
         | Encoder.Ok ->
           Encoder.blit ~buf ~off ~len ctx.encoder ;
           k ctx len
-        | Encoder.Error err -> Error (Encoder err) in
+        | Encoder.Error err -> Error (`Encoder err) in
       go (Encoder.flush (fun _ -> Ok) ctx.encoder)
 
   let rec decode_raw
@@ -113,7 +118,7 @@ module Send_mail_tls_p = struct
         | Decoder.Read { buffer; off; len; continue; } ->
           let continue n = go (continue n) in
           Read { buffer; off; len; k= continue; }
-        | Decoder.Error { error; _ } -> Error (Decoder error) in
+        | Decoder.Error { error; _ } -> Error (`Decoder error) in
       match is_request w with
       | true -> go (Request.Decoder.request ctx.decoder :> [ Request.t | Reply.t ] Decoder.state)
       | false -> go (Reply.Decoder.response ctx.decoder :> [ Request.t | Reply.t ] Decoder.state)
@@ -121,7 +126,8 @@ end
 
 module Send_mail_tls_s = struct
   type 's t =
-    { q : [ `q0 | `q1 | `q2 | `q3 | `q4 | `q5 | `q6 | `q7 | `q8 ]
+    { q : [ `q0 | `q1 | `q2 | `q3 | `q4 | `q5 | `q6 | `q7 | `q8 | `q9 ]
+    ; ew : Sendmail.error Starttls.error
     ; tls : Rfc1869.t
     ; domain : Domain.t
     ; tls_buf : Bytes.t }
@@ -134,7 +140,9 @@ module Log = (val Logs.src_log src : Logs.LOG)
 let ok x y = Ok (x, y)
 let ( $ ) f x = f x
 
-let transition
+type ('a, 'b) refl = Refl : ('a, 'a) t
+
+let rec transition
   : 's Send_mail_tls_s.t -> State.event -> (State.action * 's Send_mail_tls_s.t, Send_mail_tls_p.error * 's Send_mail_tls_s.t) result
   = fun q e -> let open State in
     match q.q, e with
@@ -163,28 +171,36 @@ let transition
 
       let Rfc1869.V (starttls, (module Starttls), inj) = Rfc1869.prj q.tls in
       let action, q' = match Starttls.action starttls with
-        | Some (Rfc1869.Recv_code 220) -> recv PP_220, `q4
-        | Some Rfc1869.Waiting_payload -> read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q4
-        | Some Rfc1869.(Send _) -> send Starttls (inj starttls), `q5
-        | Some (Rfc1869.Recv_code _) -> assert false
-        | None -> Close, `q6 in
+        | Ok (Rfc1869.Recv_code 220) -> recv PP_220, `q4
+        | Ok Rfc1869.Waiting_payload -> read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q4
+        | Ok Rfc1869.(Send _) -> send Starttls (inj starttls), `q5
+        | Ok (Rfc1869.Recv_code _) -> assert false
+        | Ok Rfc1869.End -> Close, `q6
+        | Error _ -> Close, `q6 in
       ok $ action $ { q with tls= inj starttls; q= q' }
     | `q5, Send Starttls ->
+      Log.debug (fun m -> m "[q5] send TLS data") ;
+
       let Rfc1869.V (starttls, (module Starttls), inj) = Rfc1869.prj q.tls in
       let starttls = Starttls.handle starttls in
       let tls = inj starttls in
       let action, q' = match Starttls.action starttls with
-        | Some (Rfc1869.Recv_code _) -> assert false
-        | Some Rfc1869.Waiting_payload -> read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q4
-        | Some Rfc1869.(Send _) ->
+        | Ok (Rfc1869.Recv_code _) -> assert false
+        | Ok Rfc1869.Waiting_payload -> read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q4
+        | Ok Rfc1869.(Send _) ->
           Log.info (fun m -> m "Ask FSM to send TLS chunk.\n%!") ;
           send Starttls tls, `q5 (* XXX(dinosaure): ok dragoon here, if we move
                                     to [q3], we send TLS chunk twice times. Why
                                     I make this new state? Why we not use only
                                     [q3] to send TLS chunk? Why [handle] is only
                                     on [q5]? WHY? *)
-        | None -> Close, `q6 in
-      ok $ action $ { q with tls; q= q' }
+        | Ok Rfc1869.End -> Close, `q6
+        | Error _ ->
+          Log.warn (fun m -> m "Got an error from STARTTLS fiber (move to [q9]).") ;
+          Close, `q9 in
+      if q' = `q9
+      then transition { q with tls= inj starttls; q= `q9 } Close
+      else ok $ action $ { q with tls= inj starttls; q= q' }
     | `q4, Recv (PP_220, txts) ->
       let Rfc1869.V (starttls, (module Starttls), inj) = Rfc1869.prj q.tls in
 
@@ -202,14 +218,17 @@ let transition
       ( match Starttls.decode (Rfc1869.Payload { buf= q.tls_buf; off= 0; len; }) starttls with
         | Ok starttls ->
           let action, q' = match Starttls.action starttls with
-            | Some Rfc1869.Waiting_payload ->
+            | Ok Rfc1869.Waiting_payload ->
               read ~buf:q.tls_buf ~off:0 ~len:(Bytes.length q.tls_buf), `q4
-            | Some Rfc1869.(Send _) ->
+            | Ok Rfc1869.(Send _) ->
               Log.info (fun m -> m "Ask FSM to send TLS chunk.\n%!") ;
               send Starttls (inj starttls), `q5
-            | Some (Rfc1869.Recv_code _) -> assert false (* XXX(dinosaure): should not occur at this stage! *)
-            | None -> Close, `q6 in
-          ok $ action $ { q with tls= inj starttls; q= q' }
+            | Ok (Rfc1869.Recv_code _) -> assert false (* XXX(dinosaure): should not occur at this stage! *)
+            | Ok Rfc1869.End -> Close, `q6
+            | Error _ -> Close, `q9 in
+          if q' = `q9
+          then transition { q with tls= inj starttls; q= `q9 } Close
+          else ok $ action $ { q with tls= inj starttls; q= q' }
         | Error error ->
           Log.err (fun m -> m "Retrieve an error while decoding payload: %a"
                       Starttls.pp_error error) ;
@@ -217,7 +236,15 @@ let transition
     | `q6, Close -> ok $ Close $ { q with q= `q6 }
     | `q7, Send Quit -> ok $ Close $ { q with q= `q6 }
     | `q8, Send Quit -> ok $ Close $ { q with q= `q6 }
-    | _, _ -> Error (Send_mail_tls_p.Invalid_state, q)
+    | `q9, Close ->
+      Log.warn (fun m -> m "Got an error from STARTTLS fiber, try to extract it.\n%!") ;
+
+      ( match Rfc1869.eq q.tls (module Starttls.Extension) with
+        | None -> assert false (* XXX(dinosaure): impossible by initialization. *)
+        | Some tls ->
+          let Starttls.Fiber (ew', fiber) = (Starttls.extract_fiber :> Starttls.fiber) in
+
+    | _, _ -> Error (`Invalid_state, q)
 
 type error = Send_mail_tls_p.error
 
@@ -240,11 +267,12 @@ let make_state ?logger ?encoding ~domain ~from ~recipients auth mail tls_config 
   let sendmail_ctx   = Colombe.State.make_ctx () in
 
   let fiber = Sendmail.State.run sendmail_state sendmail_ctx (Sendmail.State.Recv (Sendmail.PP_220, [])) in
-  let fiber = Starttls.fiber fiber in
+  let fiber, ew = Starttls.fiber fiber in
 
   let open Rresult.R in
   domain_to_domain_name domain >>| fun valid_domain ->
   { Send_mail_tls_s.q= `q0
+  ; ew
   ; domain
   ; tls= Starttls.inj (Starttls.make fiber ~domain:valid_domain tls_config)
   ; tls_buf= Bytes.create 4096 }

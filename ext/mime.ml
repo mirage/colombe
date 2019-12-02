@@ -1,8 +1,10 @@
+open Colombe.Rfc1869
+
 module Client = struct
-  type error = Colombe.Rfc1869.error
+  type nonrec error = error
   type t = [ `Bit8_MIME | `Bit7 ] option
 
-  let pp_error = Colombe.Rfc1869.pp_error
+  let pp_error = pp_error
 
   let ehlo t _ = Ok t
 
@@ -11,9 +13,7 @@ module Client = struct
     | Some `Bit8_MIME, _ -> [ "BODY", Some "8BITMIME" ]
     | Some `Bit7, _ -> [ "BODY", Some "7BIT" ]
 
-  let encode _t = assert false
-  let action _t = assert false
-  let handle _t = assert false
+  let next _t = Ok Noop
   let decode _txts _t = Ok _t
   let rcpt_to _t _rcpt_to = []
 end
