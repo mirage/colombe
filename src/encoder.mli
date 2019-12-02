@@ -3,19 +3,19 @@ type encoder
 val io_buffer_size : int
 val encoder : unit -> encoder
 
-type error = No_enough_space
+type error = [ `No_enough_space ]
 
 val pp_error : error Fmt.t
 
-type state =
+type 'err state =
   | Write of { buffer : string
              ; off : int
              ; len : int
-             ; continue : int -> state }
-  | Error of error
-  | Ok
+             ; continue : int -> 'err state }
+  | Error of 'err
+  | Done
 
-val safe : (encoder -> state) -> encoder -> state
-val flush : (encoder -> state) -> encoder -> state
+val safe : (encoder -> ([> error ] as 'err) state) -> encoder -> 'err state
+val flush : (encoder -> ([> error ] as 'err) state) -> encoder -> 'err state
 val write : string -> encoder -> unit
 val blit : buf:string -> off:int -> len:int -> encoder -> unit

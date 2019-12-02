@@ -18,7 +18,7 @@ type t =
   | `Verify of string
   | `Reset
   | `Quit
-  | `Extension of Rfc1869.t ]
+  | `Verb of string * string list ]
 
 let equal_parameters a b =
   let a = List.sort (fun (ka, _) (kb, _) -> String.compare ka kb) a in
@@ -67,10 +67,12 @@ let pp ppf = function
   | `Verify data -> Fmt.pf ppf "(Verify %s)" data
   | `Reset -> Fmt.string ppf "Reset"
   | `Quit -> Fmt.string ppf "Quit"
-  | `Extension _ -> Fmt.pf ppf "(Extension)"
+  | `Verb (v, a) -> Fmt.pf ppf "(Verb %s %a)" v Fmt.(Dump.list string) a
 
 module Decoder = struct
-  include Decoder
+  open Decoder
+
+  type nonrec error = [ `Invalid_command of string | error ]
 
   (* According to RFC 5321. *)
 
@@ -88,23 +90,18 @@ module Decoder = struct
   let () = Hashtbl.add trie "NOOP" `Noop
   let () = Hashtbl.add trie "QUIT" `Quit
 
-  let extensions : (string, Rfc1869.t) Hashtbl.t = Hashtbl.create 16
-  (* XXX(dinosaure): when we do [Rfc1869.inj], we must populate this hashtbl. *)
-
-  let command decoder =
+  let command k decoder =
     let raw, off, len = peek_while_eol_or_space decoder in
     let command = match Bytes.unsafe_get raw (off + len - 1) with
       | ' ' -> Bytes.sub_string raw off (len - 1)
       | '\n' -> Bytes.sub_string raw off (len - 2)
-      | _ -> leave_with decoder Expected_eol_or_space in
+      | _ -> leave_with decoder `Expected_eol_or_space in
     match Hashtbl.find trie command with
     | command ->
-      decoder.pos <- decoder.pos + len ; command
-    | exception Not_found -> match Hashtbl.find extensions command with
-      | ext ->
-        decoder.pos <- decoder.pos + len
-      ; `Extension (command, ext)
-      | exception Not_found -> leave_with decoder (Invalid_command command)
+      decoder.pos <- decoder.pos + len ; k command decoder
+    | exception Not_found ->
+      decoder.pos <- decoder.pos + len
+    ; k (`Verb command) decoder
 
   let hello (decoder : decoder) =
     let raw_crlf, off, len = peek_while_eol decoder in
@@ -140,34 +137,34 @@ module Decoder = struct
     | None -> return (`Noop None) decoder
 
   let request decoder =
-    match command decoder with
-    | `Hello -> hello decoder
-    | `Mail ->
-      string "FROM:" decoder ;
-      mail decoder
-    | `Recipient ->
-      string "TO:" decoder ;
-      recipient decoder
-    | `Data -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data decoder
-    | `Data_end -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data_end decoder
-    | `Reset -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Reset decoder
-    | `Verify ->
-      let raw_crlf, off, len = peek_while_eol decoder in
-      let v = `Verify (Bytes.sub_string raw_crlf off (len - 2)) in
-      decoder.pos <- decoder.pos + len ; return v decoder
-    | `Expand ->
-      let raw_crlf, off, len = peek_while_eol decoder in
-      let v = `Expand (Bytes.sub_string raw_crlf off (len - 2)) in
-      decoder.pos <- decoder.pos + len ; return v decoder
-    | `Help -> help decoder
-    | `Noop -> noop decoder
-    | `Quit -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Quit decoder
-    | `Extension (_, _) ->
-      let raw_crlf, off, len = peek_while_eol decoder in
-      let _ = if len - 2 > 0 then Some (Bytes.sub_string raw_crlf off (len - 2)) else None in
-      decoder.pos <- decoder.pos + len ;
-
-      assert false
+    let k v decoder = match v with
+      | `Hello -> hello decoder
+      | `Mail ->
+        string "FROM:" decoder ;
+        mail decoder
+      | `Recipient ->
+        string "TO:" decoder ;
+        recipient decoder
+      | `Data -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data decoder
+      | `Data_end -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data_end decoder
+      | `Reset -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Reset decoder
+      | `Verify ->
+        let raw_crlf, off, len = peek_while_eol decoder in
+        let v = `Verify (Bytes.sub_string raw_crlf off (len - 2)) in
+        decoder.pos <- decoder.pos + len ; return v decoder
+      | `Expand ->
+        let raw_crlf, off, len = peek_while_eol decoder in
+        let v = `Expand (Bytes.sub_string raw_crlf off (len - 2)) in
+        decoder.pos <- decoder.pos + len ; return v decoder
+      | `Help -> help decoder
+      | `Noop -> noop decoder
+      | `Quit -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Quit decoder
+      | `Verb verb ->
+        let raw_crlf, off, len = peek_while_eol decoder in
+        let raw = Bytes.sub_string raw_crlf off (len - 2) in
+        let v = `Verb (verb, Astring.String.cuts ~sep:" " ~empty:true raw) in
+        decoder.pos <- decoder.pos + len ; return v decoder
+    in command k decoder
 
   let request decoder =
     if at_least_one_line decoder
@@ -176,23 +173,25 @@ module Decoder = struct
 
   let of_string x =
     let decoder = decoder_from x in
-    let go x : (t, error) result = match x with
-      | Read _ -> Error End_of_input
+    let go x : (t, [> error ]) result = match x with
+      | Read _ -> Error `End_of_input
       | Error { error; _ } ->  Error error
-      | Ok v -> Ok v in
+      | Done v -> Ok v in
     go (request decoder)
 
   let of_string_raw x r =
     let decoder = decoder_from x in
-    let go x : (t, error) result = match x with
-      | Read _ -> Error End_of_input
+    let go x : (t, [> error ]) result = match x with
+      | Read _ -> Error `End_of_input
       | Error { error; _ } ->  Error error
-      | Ok v -> r := decoder.pos ; Ok v in
+      | Done v -> r := decoder.pos ; Ok v in
     go (request decoder)
 end
 
 module Encoder = struct
-  include Encoder
+  open Encoder
+
+  type nonrec error = error
 
   let crlf encoder = write "\r\n" encoder
 
@@ -280,21 +279,15 @@ module Encoder = struct
     | `Noop argument ->
       noop argument encoder
     | `Quit -> write "QUIT" encoder ; crlf encoder
-    | `Extension ext ->
-      match Rfc1869.prj ext with
-      | Rfc1869.V (v, (module Ext), _) ->
-        ( match Ext.encode v with
-          | Rfc1869.Payload { buf; off; len; } ->
-            write (Bytes.sub_string buf off len) encoder (* TODO: optimize! *)
-          | Rfc1869.Request { verb; args= [] } ->
-            write verb encoder ; crlf encoder
-          | Rfc1869.Request { verb; args; } ->
-            write verb encoder
-          ; List.iter (fun arg -> write " " encoder ; write arg encoder) args
-          ; crlf encoder )
+    | `Verb (verb, []) ->
+      write verb encoder ; crlf encoder
+    | `Verb (verb, args) ->
+      write verb encoder
+    ; List.iter (fun arg -> write " " encoder ; write arg encoder) args
+    ; crlf encoder
 
   let request command encoder =
-    let k encoder = request command encoder ; Ok in
+    let k encoder = request command encoder ; Done in
     match safe k encoder with
     | Write _ -> assert false (* XXX(dinosaure): request never calls [flush]. *)
     | v -> flush (fun _ -> v) encoder
@@ -307,6 +300,6 @@ module Encoder = struct
         Buffer.add_substring res buffer off len ;
         go (continue len)
       | Error error -> Error error
-      | Ok -> Ok (Buffer.contents res) in
+      | Done -> Ok (Buffer.contents res) in
     go (request x encoder)
 end
