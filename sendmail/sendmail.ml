@@ -20,7 +20,26 @@ module Value = struct
     | `Unexpected_response of (int * string list)
     | `Unsupported_mechanism
     | `Encryption_required
-    | `Weak_mechanism  ]
+    | `Weak_mechanism
+    | `Authentication_rejected
+    | `Authentication_failed
+    | `Authentication_required ]
+
+  let pp_error ppf = function
+    | #Request.Decoder.error as err -> Request.Decoder.pp_error ppf err
+    | #Reply.Decoder.error as err -> Reply.Decoder.pp_error ppf err
+    | `Unexpected_response (code, txts) ->
+      Fmt.pf ppf "Unexpected response %3d: %a"
+        code Fmt.(Dump.list string) txts
+    | `Unsupported_mechanism ->
+      Fmt.pf ppf "Unsupported mechanism"
+    | `Encryption_required ->
+      Fmt.pf ppf "Encryption required"
+    | `Weak_mechanism ->
+      Fmt.pf ppf "Weak mechanism"
+    | `Authentication_rejected -> Fmt.pf ppf "Authentication rejected"
+    | `Authentication_failed -> Fmt.pf ppf "Authentication failed"
+    | `Authentication_required -> Fmt.pf ppf "Authentication required"
   
   type 'x send =
     | Helo : helo send
@@ -42,7 +61,7 @@ module Value = struct
   let encode
     : type a. Encoder.encoder -> a send -> a -> [> Encoder.error ] Encoder.state
     = fun encoder w v -> match w with
-      | Payload -> Encoder.safe (fun encoder -> Encoder.write v encoder ; Encoder.Done) encoder
+      | Payload -> Encoder.safe (fun encoder -> Encoder.write v encoder ; Encoder.write "\r\n" encoder ; Encoder.Done) encoder
     | Helo -> Request.Encoder.request (`Hello v) encoder
     | Mail_from -> Request.Encoder.request (`Mail v) encoder
     | Rcpt_to -> Request.Encoder.request (`Recipient v) encoder
@@ -61,7 +80,12 @@ module Value = struct
       | PP_250, `PP_250 txts -> Decoder.Done txts
       | TP_354, `TP_354 txts -> Decoder.Done txts
       | Code, `Other v -> Decoder.Done v
-      | _, _ -> assert false in
+      | Code, `PN_501 txts -> Decoder.Done (501, txts)
+      | Code, `PN_504 txts -> Decoder.Done (504, txts)
+      | Code, `PP_250 txts -> Decoder.Done (250, txts)
+      | _, _ ->
+        Fmt.epr ">>> %a\n%!" Reply.pp v ;
+        assert false in
     let rec go = function
       | Decoder.Done v -> k v
       | Decoder.Read { buffer; off; len; continue; } ->
@@ -73,6 +97,11 @@ end
 
 module Monad = State.Scheduler(Value)
 
+let properly_quit_and_fail ctx err =
+  let open Monad in
+  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+  fail err
+
 let auth ctx mechanism info =
   let open Monad in
   match info with
@@ -82,9 +111,9 @@ let auth ctx mechanism info =
     | Value.PLAIN ->
       let* code, txts = send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code in
       match code with
-      | 504 -> fail `Unsupported_mechanism
-      | 538 -> fail `Encryption_required
-      | 534 -> fail `Weak_mechanism
+      | 504 -> properly_quit_and_fail ctx `Unsupported_mechanism
+      | 538 -> properly_quit_and_fail ctx `Encryption_required
+      | 534 -> properly_quit_and_fail ctx `Weak_mechanism
       | 334 ->
         let* () = match txts with
           | [] ->
@@ -96,6 +125,8 @@ let auth ctx mechanism info =
             send ctx Value.Payload payload in
         ( recv ctx Value.Code >>= function
             | (235, _txts) -> return `Authenticated
+            | (501, _txts) -> properly_quit_and_fail ctx `Authentication_rejected
+            | (535, _txts) -> properly_quit_and_fail ctx `Authentication_failed
             | (code, txts) -> fail (`Unexpected_response (code, txts)) )
       | code -> fail (`Unexpected_response (code, txts))
 
@@ -113,6 +144,8 @@ type ('a, 's) stream = unit -> ('a option, 's) io
 
 type error = Value.error
 
+let pp_error = Value.pp_error
+
 let m0 ctx ?authentication ~domain sender recipients =
   let open Monad in
   recv ctx Value.PP_220 >>= fun _txts ->
@@ -120,7 +153,7 @@ let m0 ctx ?authentication ~domain sender recipients =
   ( match authentication with
     | Some a -> auth ctx a.mechanism (Some (a.username, a.password))
     | None -> return `Anonymous ) >>= fun _status ->
-  let* _txts = send ctx Value.Mail_from (sender, []) >>= fun () -> recv ctx Value.PP_250 in
+  let* code, txts = send ctx Value.Mail_from (sender, []) >>= fun () -> recv ctx Value.Code in
   let rec go = function
     | [] ->
       send ctx Value.Data () >>= fun () ->
@@ -130,7 +163,10 @@ let m0 ctx ?authentication ~domain sender recipients =
       send ctx Value.Rcpt_to (x, []) >>= fun () ->
       recv ctx Value.PP_250 >>= fun _txts ->
       go r in
-  go recipients
+  match code with
+  | 250 -> go recipients
+  | 530 -> properly_quit_and_fail ctx `Authentication_required
+  | _ -> fail (`Unexpected_response (code, txts))
 
 let m1 ctx =
   let open Monad in

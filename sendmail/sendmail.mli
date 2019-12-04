@@ -21,7 +21,12 @@ type error =
   | `Unexpected_response of (int * string list)
   | `Unsupported_mechanism
   | `Encryption_required
-  | `Weak_mechanism  ]
+  | `Weak_mechanism
+  | `Authentication_rejected
+  | `Authentication_failed
+  | `Authentication_required ]
+
+val pp_error : error Fmt.t
 
 val sendmail :
   's impl ->

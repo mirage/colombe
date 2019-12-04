@@ -44,14 +44,7 @@ let rdwr_from_flows inputs outputs =
 
 let test_0 () =
   Alcotest.test_case "usual without authentication" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_ctx () in
-  let state = Sendmail.make_state
-      ~encoding:Mime.bit8 (* default value *)
-      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      ~from:(Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      ~recipients:[ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
-      None (fun () -> None) in
-  let state = Sendmail.make state in
+  let ctx = Colombe.State.make_context () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESTMP - gsmtp"
@@ -67,27 +60,24 @@ let test_0 () =
       ; "250 Sended!"
       ; "221 Closing connection." ]
       [ "EHLO gmail.com"
-      ; "MAIL FROM:<romain.calascibetta@gmail.com> BODY=8BITMIME"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
       ; "RCPT TO:<anil@recoil.org>"
       ; "DATA"
       ; "."
       ; "QUIT" ] in
-  let fiber = Sendmail.run unix rdwr () state ctx in
+  let fiber = Sendmail.sendmail
+      unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> is_empty ()
 
 let test_1 () =
   Alcotest.test_case "usual with authentication" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_ctx () in
-  let auth = Auth.make ~username:"romain" "foobar" in
-  let state = Sendmail.make_state
-      ~encoding:Mime.bit8
-      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      ~from:(Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      ~recipients:[ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
-      (Some auth) (fun () -> None) in
-  let state = Sendmail.make state in
+  let ctx = Colombe.State.make_context () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESTMP - gsmtp"
@@ -107,27 +97,28 @@ let test_1 () =
       [ "EHLO gmail.com"
       ; "AUTH PLAIN"
       ; Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar")
-      ; "MAIL FROM:<romain.calascibetta@gmail.com> BODY=8BITMIME"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
       ; "RCPT TO:<anil@recoil.org>"
       ; "DATA"
       ; "."
       ; "QUIT" ] in
-  let fiber = Sendmail.run unix rdwr () state ctx in
+  let authentication = 
+    { Sendmail.mechanism= PLAIN
+    ; username= "romain"
+    ; password= "foobar" } in
+  let fiber = Sendmail.sendmail
+      unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      ~authentication (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> is_empty ()
 
 let test_2 () =
   Alcotest.test_case "bad authentication" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_ctx () in
-  let auth = Auth.make ~username:"romain" "foobar" in
-  let state = Sendmail.make_state
-      ~encoding:Mime.bit8
-      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      ~from:(Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      ~recipients:[ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
-      (Some auth) (fun () -> None) in
-  let state = Sendmail.make state in
+  let ctx = Colombe.State.make_context () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESMTP - gsmtp"
@@ -144,37 +135,75 @@ let test_2 () =
       ; "AUTH PLAIN"
       ; Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar")
       ; "QUIT" ] in
-  let fiber = Sendmail.run unix rdwr () state ctx in
+  let authentication = 
+    { Sendmail.mechanism= PLAIN
+    ; username= "romain"
+    ; password= "foobar" } in
+  let fiber = Sendmail.sendmail
+      unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      ~authentication (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
-  | Error _ -> is_empty () (* XXX(dinosaure): check if the error is [Auth_error]? *)
-  | Ok _ -> Fmt.failwith "Should fail with [Auth_error]"
+  | Error err ->
+    is_empty () ; assert (err = `Authentication_rejected)
+  | Ok _ -> Fmt.failwith "Should fail with [Authentication_rejected]"
 
 let test_3 () =
   Alcotest.test_case "PLAIN mechanism unavailable" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_ctx () in
-  let auth = Auth.make ~username:"romain" "foobar" in
-  let state = Sendmail.make_state
-      ~encoding:Mime.bit8
-      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      ~from:(Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      ~recipients:[ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
-      (Some auth) (fun () -> None) in
-  let state = Sendmail.make state in
+  let ctx = Colombe.State.make_context () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESMTP - gsmtp"
       ; "250-smtp.gmail.com at your service, [8.8.8.8]"
       ; "250 AUTH LOGIN"
-      ; "221 Closing connection" ]
+      ; "504 Unsupported mechanism"
+      ; "221 Closing connection." ]
       [ "EHLO gmail.com"
+      ; "AUTH PLAIN"
       ; "QUIT" ] in
-  let fiber = Sendmail.run unix rdwr () state ctx in
+  let authentication = 
+    { Sendmail.mechanism= PLAIN
+    ; username= "romain"
+    ; password= "foobar" } in
+  let fiber = Sendmail.sendmail
+      unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      ~authentication (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
-  | Error _ -> is_empty () (* XXX(dinosaure): check if the error is [Auth_error]? *)
-  | Ok _ -> Fmt.failwith "Should fail with [Auth_missing_mechanism]"
+  | Error err ->
+    is_empty () ; assert (err = `Unsupported_mechanism)
+  | Ok _ -> Fmt.failwith "Should fail with [Unsupported_mechanism]"
+
+let test_4 () =
+  Alcotest.test_case "Authentication required" `Quick @@ fun () ->
+  let ctx = Colombe.State.make_context () in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [ "220 smtp.gmail.com ESMTP - gsmtp"
+      ; "250-smtp.gmail.com at your service, [8.8.8.8]"
+      ; "250 AUTH LOGIN"
+      ; "530 Authentication required"
+      ; "221 Closing connection." ]
+      [ "EHLO gmail.com"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "QUIT" ] in
+  let fiber = Sendmail.sendmail
+      unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (fun () -> unix.return None) in
+  match Unix_scheduler.prj fiber with
+  | Error err -> is_empty () ; assert (`Authentication_required = err)
+  | Ok _ -> Fmt.failwith "Should fail with [Encryption_required]"
 
 let () =
   Alcotest.run "sendmail" [ "mock", [ test_0 ()
                                     ; test_1 ()
                                     ; test_2 ()
-                                    ; test_3 () ] ]
+                                    ; test_3 ()
+                                    ; test_4 () ] ]

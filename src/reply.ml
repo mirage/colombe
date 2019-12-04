@@ -191,6 +191,10 @@ module Decoder = struct
 
   type nonrec error = [ `Invalid_code of int | error ]
 
+  let pp_error ppf = function
+    | `Invalid_code code -> Fmt.pf ppf "Invalid code: %3d" code
+    | #Decoder.error as err -> pp_error ppf err
+
   let is_digit = function '0' .. '9' -> true | _ -> false
 
   external unsafe_get_uint8 : bytes -> int -> int = "%string_unsafe_get"
@@ -281,6 +285,8 @@ module Encoder = struct
   open Encoder
 
   type nonrec error = error
+
+  let pp_error = pp_error
 
   let crlf encoder = write "\r\n" encoder
 
