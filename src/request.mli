@@ -18,6 +18,8 @@ val pp : t Fmt.t
 module Decoder : sig
   type error = [ `Invalid_command of string | Decoder.error ]
 
+  val pp_error : error Fmt.t
+
   val request : Decoder.decoder -> (t, [> error ]) Decoder.state
 
   val of_string : string -> (t, [> error ]) result
@@ -26,6 +28,8 @@ end
 
 module Encoder : sig
   type error = Encoder.error
+
+  val pp_error : error Fmt.t
 
   val request : t -> Encoder.encoder -> [> error ] Encoder.state
   val to_string : t -> (string, error) result

@@ -74,6 +74,10 @@ module Decoder = struct
 
   type nonrec error = [ `Invalid_command of string | error ]
 
+  let pp_error ppf = function
+    | `Invalid_command command -> Fmt.pf ppf "Invalid command: %S" command
+    | #Decoder.error as err -> pp_error ppf err
+
   (* According to RFC 5321. *)
 
   let trie = Hashtbl.create 16
@@ -192,6 +196,8 @@ module Encoder = struct
   open Encoder
 
   type nonrec error = error
+
+  let pp_error = pp_error
 
   let crlf encoder = write "\r\n" encoder
 
