@@ -1,4 +1,5 @@
 (library
  (name colombe)
  (public_name colombe)
- (libraries astring rresult fmt ipaddr angstrom))
+ (libraries astring rresult fmt ipaddr angstrom)
+ (preprocess future_syntax))
