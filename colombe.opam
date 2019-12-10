@@ -20,12 +20,10 @@ depends: [
   "dune" {build}
   "angstrom"
   "ipaddr" {>= "2.9.0"}
+  "ocaml-syntax-shims"
   "fmt"
-  "tls"
   "logs"
-  "base64"
   "rresult"
-  "hxd"
   "domain-name" {>= "0.2.1"}
   "alcotest" {with-test}
   "crowbar" {dev & with-test}
