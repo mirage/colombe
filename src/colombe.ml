@@ -12,5 +12,3 @@ module Reverse_path = Reverse_path
 module Forward_path = Forward_path
 
 module State = State
-
-module Rfc1869 = Rfc1869

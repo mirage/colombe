@@ -205,7 +205,7 @@ let run
       | Error err -> return (Error err : ('a, 'err) result) in
     go m
 
-let sendmail ({ bind; return; } as impl) rdwr flow context ~domain ?authentication sender recipients mail =
+let sendmail ({ bind; return; } as impl) rdwr flow context ?authentication ~domain sender recipients mail =
   let ( >>- ) = bind in
   let ( >>= ) x f = x >>- function
     | Ok v -> f v
