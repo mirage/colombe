@@ -30,7 +30,7 @@ type error = Sendmail.error
 
 let sendmail ~hostname ?(port= 587) ~domain ~authenticator ?authentication sender recipients mail =
   let hostname = Domain_name.to_string hostname in
-  let ctx = Colombe.State.make_context () in
+  let ctx = Colombe.State.Context.make () in
   let mail () = Lwt_scheduler.inj (mail ()) in
   Tls_lwt.connect authenticator (hostname, port) >>= fun (ic, oc) ->
   Sendmail.sendmail lwt rdwr { ic; oc; } ctx ~domain ?authentication sender recipients mail
