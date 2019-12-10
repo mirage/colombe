@@ -44,7 +44,7 @@ let rdwr_from_flows inputs outputs =
 
 let test_0 () =
   Alcotest.test_case "usual without authentication" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_context () in
+  let ctx = Colombe.State.Context.make () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESTMP - gsmtp"
@@ -77,7 +77,7 @@ let test_0 () =
 
 let test_1 () =
   Alcotest.test_case "usual with authentication" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_context () in
+  let ctx = Colombe.State.Context.make () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESTMP - gsmtp"
@@ -118,7 +118,7 @@ let test_1 () =
 
 let test_2 () =
   Alcotest.test_case "bad authentication" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_context () in
+  let ctx = Colombe.State.Context.make () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESMTP - gsmtp"
@@ -152,7 +152,7 @@ let test_2 () =
 
 let test_3 () =
   Alcotest.test_case "PLAIN mechanism unavailable" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_context () in
+  let ctx = Colombe.State.Context.make () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESMTP - gsmtp"
@@ -180,7 +180,7 @@ let test_3 () =
 
 let test_4 () =
   Alcotest.test_case "Authentication required" `Quick @@ fun () ->
-  let ctx = Colombe.State.make_context () in
+  let ctx = Colombe.State.Context.make () in
   let rdwr, is_empty =
     rdwr_from_flows
       [ "220 smtp.gmail.com ESMTP - gsmtp"

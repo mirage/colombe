@@ -2,6 +2,8 @@ open Colombe.Sigs
 open Colombe.State
 open Colombe
 
+let ( <.> ) f g = fun x -> f (g x)
+
 module Value = struct
   type helo = Domain.t
   type mail_from = Reverse_path.t * (string * string option) list
@@ -40,6 +42,9 @@ module Value = struct
     | `Authentication_rejected -> Fmt.pf ppf "Authentication rejected"
     | `Authentication_failed -> Fmt.pf ppf "Authentication failed"
     | `Authentication_required -> Fmt.pf ppf "Authentication required"
+
+  type encoder = Encoder.encoder
+  type decoder = Decoder.decoder
   
   type 'x send =
     | Helo : helo send
@@ -59,43 +64,53 @@ module Value = struct
     | Code : code recv
 
   let encode
-    : type a. Encoder.encoder -> a send -> a -> [> Encoder.error ] Encoder.state
-    = fun encoder w v -> match w with
-      | Payload -> Encoder.safe (fun encoder -> Encoder.write v encoder ; Encoder.write "\r\n" encoder ; Encoder.Done) encoder
-    | Helo -> Request.Encoder.request (`Hello v) encoder
-    | Mail_from -> Request.Encoder.request (`Mail v) encoder
-    | Rcpt_to -> Request.Encoder.request (`Recipient v) encoder
-    | Data -> Request.Encoder.request `Data encoder
-    | Dot -> Request.Encoder.request `Data_end encoder
-    | Quit -> Request.Encoder.request `Quit encoder
-    | Auth -> match v with
-      | PLAIN -> Request.Encoder.request (`Verb ("AUTH", [ "PLAIN" ])) encoder
+    : type a. encoder -> a send -> a -> (unit, [> Encoder.error ]) t
+    = fun encoder w v ->
+      let fiber : a send -> [> Encoder.error ] Encoder.state = function
+        | Payload   ->
+          let k encoder =
+            Encoder.write v encoder ;
+            Encoder.write "\r\n" encoder ;
+            Encoder.Done in
+          Encoder.safe k encoder
+        | Helo      -> Request.Encoder.request (`Hello v) encoder
+        | Mail_from -> Request.Encoder.request (`Mail v) encoder
+        | Rcpt_to   -> Request.Encoder.request (`Recipient v) encoder
+        | Data      -> Request.Encoder.request `Data encoder
+        | Dot       -> Request.Encoder.request `Data_end encoder
+        | Quit      -> Request.Encoder.request `Quit encoder
+        | Auth -> match v with
+          | PLAIN   -> Request.Encoder.request (`Verb ("AUTH", [ "PLAIN" ])) encoder in
+      let rec go = function
+        | Encoder.Done -> Return ()
+        | Encoder.Write { continue; buffer; off; len; } ->
+          Fmt.epr ">>> %S\n%!" (String.sub buffer off len) ;
+          Write { k= go <.> continue; buffer; off; len; }
+        | Encoder.Error err -> Error err in
+      (go <.> fiber) w
 
   let decode
-    : type a. Decoder.decoder -> a recv -> (a, [> Decoder.error ]) Decoder.state
+    : type a. decoder -> a recv -> (a, [> Decoder.error ]) t
     = fun decoder w ->
-      let k : Reply.t -> (a, [> Decoder.error ]) Decoder.state = fun v -> match w, v with
-      | PP_220, `PP_220 txts -> Decoder.Done txts
-      | PP_221, `PP_221 txts -> Decoder.Done txts
-      | PP_250, `PP_250 txts -> Decoder.Done txts
-      | TP_354, `TP_354 txts -> Decoder.Done txts
-      | Code, `Other v -> Decoder.Done v
-      | Code, `PN_501 txts -> Decoder.Done (501, txts)
-      | Code, `PN_504 txts -> Decoder.Done (504, txts)
-      | Code, `PP_250 txts -> Decoder.Done (250, txts)
-      | _, _ ->
-        Fmt.epr ">>> %a\n%!" Reply.pp v ;
-        assert false in
+      let k : Reply.t -> (a, [> Decoder.error ]) t = fun v -> match w, v with
+      | PP_220, `PP_220 txts -> Return txts
+      | PP_221, `PP_221 txts -> Return txts
+      | PP_250, `PP_250 txts -> Return txts
+      | TP_354, `TP_354 txts -> Return txts
+      | Code, `Other v -> Return v
+      | Code, `PN_501 txts -> Return (501, txts)
+      | Code, `PN_504 txts -> Return (504, txts)
+      | Code, `PP_250 txts -> Return (250, txts)
+      | _, _ -> assert false in
     let rec go = function
       | Decoder.Done v -> k v
       | Decoder.Read { buffer; off; len; continue; } ->
-        let continue n = go (continue n) in
-        Decoder.Read { buffer; off; len; continue; }
-      | Decoder.Error _ as err -> err in
+        Read { k= go <.> continue; buffer; off; len; }
+      | Decoder.Error { error; _ } -> Error error in
     go (Reply.Decoder.response decoder)
 end
 
-module Monad = State.Scheduler(Value)
+module Monad = State.Scheduler(State.Context)(Value)
 
 let properly_quit_and_fail ctx err =
   let open Monad in
