@@ -2,10 +2,7 @@
   (name sendmail)
   (public_name sendmail)
   (modules sendmail)
-  (libraries colombe
-             colombe.auth
-             colombe.mime
-             colombe.enhanced_status_codes))
+  (libraries base64 colombe))
 
 (library
   (name sendmail_with_tls)

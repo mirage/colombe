@@ -393,7 +393,7 @@ let sendmail { bind; return } rdwr flow ctx mail =
         | None -> assert false in
     go state >>= fun state -> ctx.tls <- Some state ; return ()
 
-let sendmail ({ bind; return; } as impl) rdwr flow context config ~domain ?authentication sender recipients mail =
+let sendmail ({ bind; return; } as impl) rdwr flow context config ?authentication ~domain sender recipients mail =
   let ( >>- ) = bind in
   let ( >>= ) x f = x >>- function
     | Ok v -> f v
