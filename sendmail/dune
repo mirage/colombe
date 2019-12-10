@@ -2,13 +2,15 @@
   (name sendmail)
   (public_name sendmail)
   (modules sendmail)
-  (libraries base64 colombe))
+  (libraries base64 colombe)
+  (preprocess future_syntax))
 
 (library
   (name sendmail_with_tls)
   (public_name sendmail.tls)
   (modules sendmail_with_tls)
-  (libraries tls sendmail))
+  (libraries tls sendmail)
+  (preprocess future_syntax))
 
 (library
   (name sendmail_lwt)
