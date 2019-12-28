@@ -12,7 +12,7 @@
 (executable
  (name test_sendmail)
  (modules test_sendmail)
- (libraries sendmail colombe colombe.mrmime mrmime alcotest))
+ (libraries sendmail colombe colombe.emile mrmime alcotest))
 
 (alias
  (name runtest)
