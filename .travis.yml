@@ -5,7 +5,7 @@ services:
 - docker
 env:
   global:
-  - PINS="colombe:. sendmail:. sendmail-lwt:. emile:https://github.com/dinosaure/emile.git mrmime:https://github.com/mirage/mrmime.git"
+          - PINS="colombe:. sendmail:. sendmail-lwt:. emile:https://github.com/dinosaure/emile.git mrmime:https://github.com/mirage/mrmime.git unstrctrd:https://github.com/dinosaure/unstrctrd.git"
   - DISTRO="debian-stable"
   - TESTS=true
   matrix:
