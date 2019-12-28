@@ -68,8 +68,8 @@ let test_0 () =
   let fiber = Sendmail.sendmail
       unix rdwr () ctx
       ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
       (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
@@ -109,8 +109,8 @@ let test_1 () =
   let fiber = Sendmail.sendmail
       unix rdwr () ctx
       ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
       ~authentication (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
@@ -142,8 +142,8 @@ let test_2 () =
   let fiber = Sendmail.sendmail
       unix rdwr () ctx
       ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
       ~authentication (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
   | Error err ->
@@ -170,8 +170,8 @@ let test_3 () =
   let fiber = Sendmail.sendmail
       unix rdwr () ctx
       ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
       ~authentication (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
   | Error err ->
@@ -194,8 +194,8 @@ let test_4 () =
   let fiber = Sendmail.sendmail
       unix rdwr () ctx
       ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
-      (Rresult.R.get_ok @@ Colombe_mrmime.to_reverse_path romain_calascibetta)
-      [ Rresult.R.get_ok @@ Colombe_mrmime.to_forward_path anil ]
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
       (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
   | Error err -> is_empty () ; assert (`Authentication_required = err)

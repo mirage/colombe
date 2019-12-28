@@ -1,5 +1,0 @@
-(library
- (name colombe_mrmime)
- (public_name colombe.mrmime)
- (optional)
- (libraries colombe mrmime))
