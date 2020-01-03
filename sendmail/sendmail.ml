@@ -71,7 +71,7 @@ module Value = struct
           let k encoder =
             Encoder.write v encoder ;
             Encoder.write "\r\n" encoder ;
-            Encoder.Done in
+            Encoder.flush (fun _ -> Encoder.Done) encoder in
           Encoder.safe k encoder
         | Helo      -> Request.Encoder.request (`Hello v) encoder
         | Mail_from -> Request.Encoder.request (`Mail v) encoder
@@ -109,6 +109,8 @@ module Value = struct
     go (Reply.Decoder.response decoder)
 end
 
+let src = Logs.Src.create "sendmail" ~doc:"logs sendmail's event"
+module Log = (val Logs.src_log src : Logs.LOG)
 module Monad = State.Scheduler(State.Context)(Value)
 
 let properly_quit_and_fail ctx err =
@@ -163,14 +165,20 @@ let pp_error = Value.pp_error
 let has_8bit_mime_transport_extension =
   List.exists ((=) "8BITMIME")
 
+let pp_status ppf = function
+  | `Anonymous -> Fmt.string ppf "<anonymous>"
+  | `Authenticated -> Fmt.string ppf "<authenticated>"
+
 let m0 ctx ?authentication ~domain sender recipients =
   let open Monad in
   recv ctx Value.PP_220 >>= fun _txts ->
   let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
   let has_8bit_mime_transport_extension = has_8bit_mime_transport_extension txts in
+  Log.debug (fun m -> m "8BITMIME extension: %b" has_8bit_mime_transport_extension) ;
   ( match authentication with
     | Some a -> auth ctx a.mechanism (Some (a.username, a.password))
-    | None -> return `Anonymous ) >>= fun _status ->
+    | None -> return `Anonymous ) >>= fun status ->
+  Log.debug (fun m -> m "Auth status: %a" pp_status status) ;
   let parameters =
     if has_8bit_mime_transport_extension
     then [ "BODY", Some "8BITMIME" ]
@@ -204,8 +212,10 @@ let run
     let rec go = function
       | Read { buffer; off; len; k; } ->
         rdwr.rd flow buffer off len >>= fun len ->
+        Log.debug (fun m -> m "[rd]>>> %S" (Bytes.sub_string buffer off len)) ;
         go (k len)
       | Write { buffer; off; len; k; } ->
+        Log.debug (fun m -> m "[wr]>>> %S" (String.sub buffer off len)) ;
         rdwr.wr flow buffer off len >>= fun () ->
         go (k len)
       | Return v -> return (Ok v)
@@ -225,5 +235,6 @@ let sendmail ({ bind; return; } as impl) rdwr flow context ?authentication ~doma
     | Some (buf, off, len) ->
       rdwr.wr flow buf off len >>- mail >>- go
     | None -> return () in
+  Log.debug (fun m -> m "Start to send email") ;
   mail () >>- go >>- fun () ->
   let m1 = m1 context in run impl rdwr flow m1

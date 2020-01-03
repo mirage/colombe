@@ -18,6 +18,9 @@ module Context_with_tls = struct
     ; tls= None }
 end
 
+let src = Logs.Src.create "sendmail-with-tls" ~doc:"logs sendmail's event with TLS"
+module Log = (val Logs.src_log src : Logs.LOG)
+
 module Value = struct
   type helo = Domain.t
   type mail_from = Reverse_path.t * (string * string option) list
@@ -61,6 +64,13 @@ module Value = struct
     | TP_354 : tp_354 recv
     | Code : code recv
 
+  let pp_witness : type a. a recv Fmt.t = fun ppf -> function
+    | PP_220 -> Fmt.pf ppf "PP-220"
+    | PP_221 -> Fmt.pf ppf "PP-221"
+    | PP_250 -> Fmt.pf ppf "PP-250"
+    | TP_354 -> Fmt.pf ppf "TP-354"
+    | Code -> Fmt.pf ppf "<code>"
+
   let encode_without_tls
     : type a. Encoder.encoder -> a send -> a -> (unit, [> Encoder.error ]) t
     = fun encoder w v ->
@@ -98,6 +108,7 @@ module Value = struct
         | Code, `PN_504 txts -> Return (504, txts)
         | Code, `PP_250 txts -> Return (250, txts)
         | _, _ ->
+          Log.err (fun m -> m "Unexpected valid value: witness:%a value:%a" pp_witness w Reply.pp v) ;
           assert false in
       let rec go = function
         | Decoder.Done v -> k v
@@ -148,6 +159,7 @@ module Value = struct
       | `Response None -> k_fiber state
     and fiber_read state resp = function
       | `Data (Some raw) ->
+        Log.debug (fun m -> m "[rd]>>> %S (while handshake)" (Cstruct.to_string raw)) ;
         (* XXX(dinosaure): should never occur while handshake! *)
         let buffer = ctx.Context_with_tls.context.Context.decoder.Decoder.buffer in
         let max = ctx.Context_with_tls.context.Context.decoder.Decoder.max in
@@ -183,6 +195,7 @@ module Value = struct
       handle_handshake ctx state k
     | Some state, Write { k; buffer; off; len; }, _ ->
       let raw = Cstruct.of_string ~off ~len buffer in
+      Log.debug (fun m -> m "[wr]>>> %S" (Cstruct.to_string raw)) ;
       ( match Tls.Engine.send_application_data state [ raw ] with
       | Some (state, raw) ->
         let k n = ctx.tls <- Some state ; go_with_tls ctx (k n) delayed_data in
@@ -194,6 +207,7 @@ module Value = struct
       let rec fiber_read = function
         | Some raw ->
           let len = min (Cstruct.len raw) len_0 in
+          Log.debug (fun m -> m "[rd]>>> %S" (Cstruct.to_string raw)) ;
           Cstruct.blit_to_bytes raw 0 buffer_without_tls off_0 len ;
           go_with_tls ctx (k_without_tls len) (Cstruct.shift raw len)
         | None ->
