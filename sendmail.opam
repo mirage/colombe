@@ -25,6 +25,7 @@ depends: [
   "colombe" {= version}
   "tls"
   "base64"
+  "logs"
   "mrmime" {>= "0.1.0" & with-test}
   "alcotest" {with-test}
   "crowbar" {with-test}
