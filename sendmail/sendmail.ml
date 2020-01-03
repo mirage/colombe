@@ -110,7 +110,7 @@ module Value = struct
 end
 
 let src = Logs.Src.create "sendmail" ~doc:"logs sendmail's event"
-module Log = (val Logs.src_log : Logs.LOG)
+module Log = (val Logs.src_log src : Logs.LOG)
 module Monad = State.Scheduler(State.Context)(Value)
 
 let properly_quit_and_fail ctx err =
