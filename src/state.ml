@@ -1,85 +1,109 @@
-type ('s, 'error) process =
+let ( <.> ) f g = fun x -> f (g x)
+
+type ('a, 'err) t =
   | Read of { buffer : bytes
             ; off : int
             ; len : int
-            ; k : int -> ('s, 'error) process }
+            ; k : int -> ('a, 'err) t }
   | Write of { buffer : string
              ; off : int
              ; len : int
-             ; k : int -> ('s, 'error) process }
-  | Return of 's
-  | Error of 'error
+             ; k : int -> ('a, 'err) t }
+  | Return of 'a
+  | Error of 'err
 
-type ctx =
-  { encoder : Encoder.encoder
-  ; decoder : Decoder.decoder }
+module Context = struct
+  type t =
+    { encoder : Encoder.encoder
+    ; decoder : Decoder.decoder }
+  type encoder = Encoder.encoder
+  type decoder = Decoder.decoder
+  
+  let make () =
+    { encoder= Encoder.encoder ()
+    ; decoder= Decoder.decoder () }
 
-let make_ctx () =
-  { encoder= Encoder.encoder ()
-  ; decoder= Decoder.decoder () }
-
-module type PROTOCOL = sig
-  type 'a t
-
-  type error
-
-  val decode : 'i t -> (ctx -> 'i -> ('s, error) process) -> ctx -> ('s, error) process
-  val encode : ('o t * 'o) -> (ctx -> ('s, error) process) -> ctx -> ('s, error) process
-
-  val encode_raw
-    : (string * int * int) ->
-      (ctx -> int -> ('s, error) process) ->
-      ctx -> ('s, error) process
-  val decode_raw
-    : (bytes * int * int) ->
-      (ctx -> int -> ('s, error) process) ->
-      ctx -> ('s, error) process
+  let encoder { encoder; _ } = encoder
+  let decoder { decoder; _ } = decoder
 end
 
-module Make (State : Sigs.FUNCTOR) (Protocol : PROTOCOL) = struct
-  type 's state = 's State.t
+module type S = sig
+  type 'a send
+  type 'a recv
 
-  type event =
-    | Accept
-    | Recv : 'x Protocol.t * 'x -> event
-    | Send : 'x Protocol.t -> event
-    | Write of int
-    | Read of int
-    | Close
+  type error
+  type encoder
+  type decoder
 
-  type action =
-    | Send : 'x Protocol.t * 'x -> action
-    | Recv : 'x Protocol.t -> action
-    | Write of { buf : string; off : int; len : int; }
-    | Read of { buf : bytes; off : int; len : int; }
-    | Close
+  val encode : encoder -> 'a send -> 'a -> (unit, error) t
+  val decode : decoder -> 'a recv -> ('a, error) t
+end
 
-  let send : 'x Protocol.t -> 'x -> action = fun k v -> Send (k, v)
-  let recv : 'x Protocol.t -> action = fun v -> Recv v
-  let write ~buf ~off ~len = Write { buf; off; len; }
-  let read ~buf ~off ~len = Read { buf; off; len; }
+module type C = sig
+  type t
+  type encoder
+  type decoder
 
-  type 's t =
-    { init : 's state
-    ; trans : 's state -> event -> (action * 's state, Protocol.error * 's state) result }
+  val encoder : t -> encoder
+  val decoder : t -> decoder
+end
 
-  type 's transition = 's state -> event -> (action * 's state, Protocol.error * 's state) result
+module Scheduler
+    (Context : C)
+    (Value : S with type encoder = Context.encoder and type decoder = Context.decoder)
+= struct
+  let rec go ~f m len = match m len with
+    | Return v -> f v
+    | Read { k; off; len; buffer; } ->
+      Read { k= go ~f k; off; len; buffer; }
+    | Write { k; off; len; buffer; } ->
+      Write { k= go ~f k; off; len; buffer; }
+    | Error _ as err -> err
 
-  let run t ctx e =
-    let rec go ctx q e = match t.trans q e with
-      | Ok (Recv w, q') ->
-        Protocol.decode w (fun ctx v -> go ctx q' (Recv (w, v))) ctx
-      | Ok (Send (w, v), q') ->
-        Protocol.encode (w, v) (fun ctx -> go ctx q' (Send w)) ctx
-      | Ok (Close, q') -> Return q'
-      | Ok (Write { buf; off; len; }, q') ->
-        Protocol.encode_raw (buf, off, len)
-          (fun ctx len -> go ctx q' (Write len)) ctx
-      | Ok (Read { buf; off; len; }, q') ->
-        Protocol.decode_raw (buf, off, len)
-          (fun ctx len -> go ctx q' (Read len)) ctx
-      | Error (err, _) -> Error err in
-    go ctx t.init e
+  let bind
+    : ('a, 'err) t -> f:('a -> ('b, 'err) t) -> ('b, 'err) t
+    = fun m ~f -> match m with
+    | Return v -> f v
+    | Error _ as err -> err
+    | Read { k; off; len; buffer; } ->
+      Read { k= go ~f k; off; len; buffer; }
+    | Write { k; off; len; buffer; } ->
+      Write { k= go ~f k; off; len; buffer; }
 
-  let make ~init trans = { init; trans; }
+  let ( let* ) m f = bind m ~f
+  let ( >>= ) m f = bind m ~f
+
+  let encode
+    : type a. Context.t -> a Value.send -> a -> (Context.t -> ('b, Value.error) t) -> ('b, Value.error) t
+    = fun ctx w v k ->
+      let rec go = function
+        | Return () -> k ctx
+        | Write { k; buffer; off; len; } ->
+          Write { k= go <.> k; buffer; off; len; }
+        | Read { k; buffer; off; len; } ->
+          Read { k= go <.> k; buffer; off; len; }
+        | Error _ as err -> err in
+      go (Value.encode (Context.encoder ctx) w v)
+
+  let send : type a. Context.t -> a Value.send -> a -> (unit, Value.error) t
+    = fun ctx w x -> encode ctx w x (fun _ctx -> Return ())
+
+  let decode
+    : type a. Context.t -> a Value.recv -> (Context.t -> a -> ('b, Value.error) t) -> ('b, Value.error) t
+    = fun ctx w k ->
+      let rec go : (a, 'err) t -> ('b, Value.error) t = function
+        | Read { k; buffer; off; len; } ->
+          Read { k= go <.> k; buffer; off; len; }
+        | Write { k; buffer; off; len; } ->
+          Write { k= go <.> k; buffer; off; len; }
+        | Return v -> k ctx v
+        | Error _ as err -> err in
+      go (Value.decode (Context.decoder ctx) w)
+
+  let recv : type a. Context.t -> a Value.recv -> (a, Value.error) t
+    = fun ctx w -> decode ctx w (fun _ctx v -> Return v)
+
+  let return v = Return v
+  let fail error = Error error
+  let error_msgf fmt = Fmt.kstrf (fun err -> Error (`Msg err)) fmt
 end

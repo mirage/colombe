@@ -1,6 +1,5 @@
 open Lwt.Infix
 open Colombe
-open Sendmail
 
 let ( <.> ) f g = fun x -> f (g x)
 
@@ -29,13 +28,10 @@ let rdwr =
 
 type error = Sendmail.error
 
-let pp_error = Sendmail.pp_error
-
-let run ?logger ~hostname ?(port= 587) ~domain ~authenticator ~from ~recipients auth mail =
+let sendmail ~hostname ?(port= 587) ~domain ~authenticator ?authentication sender recipients mail =
   let hostname = Domain_name.to_string hostname in
-  let ctx = Colombe.State.make_ctx () in
-  let state = Sendmail.make_state ?logger ~domain ~from ~recipients auth mail |> Sendmail.make in
+  let ctx = Colombe.State.Context.make () in
+  let mail () = Lwt_scheduler.inj (mail ()) in
   Tls_lwt.connect authenticator (hostname, port) >>= fun (ic, oc) ->
-  let res = run lwt rdwr { ic; oc; } state ctx in Lwt_scheduler.prj res >>= function
-  | Ok _ -> Lwt.return (Ok ())
-  | Error err ->  Lwt.return (Error err)
+  Sendmail.sendmail lwt rdwr { ic; oc; } ctx ~domain ?authentication sender recipients mail
+  |> Lwt_scheduler.prj

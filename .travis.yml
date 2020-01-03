@@ -5,7 +5,7 @@ services:
 - docker
 env:
   global:
-  - PINS="colombe:. sendmail:. sendmail-lwt:."
+          - PINS="colombe:. sendmail:. sendmail-lwt:. emile:https://github.com/dinosaure/emile.git mrmime:https://github.com/mirage/mrmime.git unstrctrd:https://github.com/dinosaure/unstrctrd.git"
   - DISTRO="debian-stable"
   - TESTS=true
   matrix:
@@ -15,3 +15,9 @@ env:
   - PACKAGE="colombe" OCAML_VERSION="4.08.1"
   - PACKAGE="sendmail" OCAML_VERSION="4.08.1"
   - PACKAGE="sendmail-lwt" OCAML_VERSION="4.08.1"
+  - PACKAGE="colombe" OCAML_VERSION="4.09"
+  - PACKAGE="sendmail" OCAML_VERSION="4.09"
+  - PACKAGE="sendmail-lwt" OCAML_VERSION="4.09"
+  - PACKAGE="colombe" OCAML_VERSION="4.07" DEPOPTS="emile"
+  - PACKAGE="colombe" OCAML_VERSION="4.08.1" DEPOPTS="emile"
+  - PACKAGE="colombe" OCAML_VERSION="4.09" DEPOPTS="emile"

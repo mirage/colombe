@@ -2,17 +2,17 @@ type encoder =
   { payload : Bytes.t
   ; mutable pos : int }
 
-type error = No_enough_space
+type error = [ `Not_enough_space ]
 
-let pp_error ppf No_enough_space = Fmt.string ppf "No_enough_space"
+let pp_error ppf `Not_enough_space = Fmt.string ppf "No enough space"
 
-type state =
+type 'err state =
   | Write of { buffer : string
-              ; off : int
-              ; len : int
-              ; continue : int -> state }
-  | Error of error
-  | Ok
+             ; off : int
+             ; len : int
+             ; continue : int -> 'err state }
+  | Error of 'err
+  | Done
 
 let io_buffer_size = 65536
 
@@ -25,8 +25,11 @@ exception Leave of error
 let leave_with (_ : encoder) error =
   raise (Leave error)
 
-let safe k encoder : state =
-  try k encoder with Leave error -> Error error
+let safe
+  : (encoder -> ([> error ] as 'err) state) -> encoder -> 'err state
+  = fun k encoder ->
+    try k encoder
+    with Leave (#error as err) -> Error (err :> 'err)
 
 let flush k0 encoder =
   if encoder.pos > 0
@@ -48,7 +51,7 @@ let write s encoder =
     let len = if l > rem then rem else l in
     Bytes.blit_string s j encoder.payload encoder.pos len ;
     encoder.pos <- encoder.pos + len ;
-    if len < l then leave_with encoder No_enough_space in
+    if len < l then leave_with encoder `Not_enough_space in
   (* XXX(dinosaure): should never appear, but avoid continuation allocation. *)
   go 0 (String.length s) encoder
 
@@ -59,5 +62,5 @@ let blit ~buf ~off ~len encoder =
     let len = if l > rem then rem else l in
     Bytes.blit_string buf (off + j) encoder.payload encoder.pos len ;
     encoder.pos <- encoder.pos + len ;
-    if len < l then leave_with encoder No_enough_space in
+    if len < l then leave_with encoder `Not_enough_space in
   go 0 len encoder

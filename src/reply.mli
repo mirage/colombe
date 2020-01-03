@@ -47,13 +47,21 @@ val equal : t -> t -> bool
 val v : int -> string list -> t
 
 module Decoder : sig
-  val response : Decoder.decoder -> t Decoder.state
+  type error = [ `Invalid_code of int | Decoder.error ]
 
-  val of_string : string -> (t, Decoder.error) result
-  val of_string_raw : string -> int ref -> (t, Decoder.error) result
+  val pp_error : error Fmt.t
+
+  val response : Decoder.decoder -> (t, [> error ]) Decoder.state
+
+  val of_string : string -> (t, [> error ]) result
+  val of_string_raw : string -> int ref -> (t, [> error ]) result
 end
 
 module Encoder : sig
-  val response : t -> Encoder.encoder -> Encoder.state
-  val to_string : t -> (string, Encoder.error) result
+  type error = Encoder.error
+
+  val pp_error : error Fmt.t
+
+  val response : t -> Encoder.encoder -> [> error ] Encoder.state
+  val to_string : t -> (string, error) result
 end
