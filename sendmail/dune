@@ -2,16 +2,15 @@
   (name sendmail)
   (public_name sendmail)
   (modules sendmail)
-  (libraries colombe
-             colombe.auth
-             colombe.mime
-             colombe.enhanced_status_codes))
+  (libraries base64 colombe)
+  (preprocess future_syntax))
 
 (library
-  (name sendmail_tls)
+  (name sendmail_with_tls)
   (public_name sendmail.tls)
-  (modules sendmail_tls)
-  (libraries hxd.string colombe.starttls sendmail))
+  (modules sendmail_with_tls)
+  (libraries tls sendmail)
+  (preprocess future_syntax))
 
 (library
   (name sendmail_lwt)

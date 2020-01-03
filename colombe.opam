@@ -17,15 +17,13 @@ run-test: [ "dune" "runtest" "-p" name "-j" jobs ]
 
 depends: [
   "ocaml" {>= "4.03.0"}
-  "dune" {build}
+  "dune" {>= "1.8.0"}
   "angstrom"
   "ipaddr" {>= "2.9.0"}
+  "ocaml-syntax-shims"
   "fmt"
-  "tls"
   "logs"
-  "base64"
   "rresult"
-  "hxd"
   "domain-name" {>= "0.2.1"}
   "alcotest" {with-test}
   "crowbar" {dev & with-test}

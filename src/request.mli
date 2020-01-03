@@ -10,19 +10,27 @@ type t =
   | `Verify of string
   | `Reset
   | `Quit
-  | `Extension of Rfc1869.t ]
+  | `Verb of string * string list ]
 
 val equal : t -> t -> bool
 val pp : t Fmt.t
 
 module Decoder : sig
-  val request : Decoder.decoder -> t Decoder.state
+  type error = [ `Invalid_command of string | Decoder.error ]
 
-  val of_string : string -> (t, Decoder.error) result
-  val of_string_raw : string -> int ref -> (t, Decoder.error) result
+  val pp_error : error Fmt.t
+
+  val request : Decoder.decoder -> (t, [> error ]) Decoder.state
+
+  val of_string : string -> (t, [> error ]) result
+  val of_string_raw : string -> int ref -> (t, [> error ]) result
 end
 
 module Encoder : sig
-  val request : t -> Encoder.encoder -> Encoder.state
-  val to_string : t -> (string, Encoder.error) result
+  type error = Encoder.error
+
+  val pp_error : error Fmt.t
+
+  val request : t -> Encoder.encoder -> [> error ] Encoder.state
+  val to_string : t -> (string, error) result
 end

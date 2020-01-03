@@ -1,3 +1,3 @@
-(lang dune 1.3)
+(lang dune 1.8)
 (name colombe)
 (version dev)
