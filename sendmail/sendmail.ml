@@ -71,7 +71,7 @@ module Value = struct
           let k encoder =
             Encoder.write v encoder ;
             Encoder.write "\r\n" encoder ;
-            Encoder.Done in
+            Encoder.flush (fun _ -> Encoder.Done) encoder in
           Encoder.safe k encoder
         | Helo      -> Request.Encoder.request (`Hello v) encoder
         | Mail_from -> Request.Encoder.request (`Mail v) encoder
