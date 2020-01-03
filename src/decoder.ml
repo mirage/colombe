@@ -26,7 +26,7 @@ type error =
   (* | Invalid_command of string *)
   | `Expected_eol
   | `Expected_eol_or_space
-  | `No_enough_space
+  | `Not_enough_space
   | `Assert_predicate of (char -> bool) ]
   (* | Invalid_code of int *)
 
@@ -37,7 +37,7 @@ let pp_error ppf = function
   | `Expected_string s -> Fmt.pf ppf "Expected_string: %s" s
   | `Expected_eol -> Fmt.string ppf "Expected end-of-line"
   | `Expected_eol_or_space -> Fmt.string ppf "Expected end-of-line or space"
-  | `No_enough_space -> Fmt.string ppf "Not enough space"
+  | `Not_enough_space -> Fmt.string ppf "Not enough space"
   | `Assert_predicate _ -> Fmt.string ppf "Assert predicate"
 
 type 'err info =
@@ -134,7 +134,7 @@ let prompt
       decoder.pos <- 0 ) ;
   let rec go off =
     if off = Bytes.length decoder.buffer
-    then Error { error= `No_enough_space
+    then Error { error= `Not_enough_space
                ; buffer= decoder.buffer
                ; committed= decoder.pos }
     else if not (at_least_one_line { decoder with max= off })
