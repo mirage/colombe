@@ -2,7 +2,7 @@
   (name sendmail)
   (public_name sendmail)
   (modules sendmail)
-  (libraries base64 colombe)
+  (libraries logs base64 colombe)
   (preprocess future_syntax))
 
 (library
