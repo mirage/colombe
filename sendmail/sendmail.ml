@@ -84,7 +84,6 @@ module Value = struct
       let rec go = function
         | Encoder.Done -> Return ()
         | Encoder.Write { continue; buffer; off; len; } ->
-          Fmt.epr ">>> %S\n%!" (String.sub buffer off len) ;
           Write { k= go <.> continue; buffer; off; len; }
         | Encoder.Error err -> Error err in
       (go <.> fiber) w
@@ -161,14 +160,22 @@ type error = Value.error
 
 let pp_error = Value.pp_error
 
+let has_8bit_mime_transport_extension =
+  List.exists ((=) "8BITMIME")
+
 let m0 ctx ?authentication ~domain sender recipients =
   let open Monad in
   recv ctx Value.PP_220 >>= fun _txts ->
-  let* _txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
+  let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
+  let has_8bit_mime_transport_extension = has_8bit_mime_transport_extension txts in
   ( match authentication with
     | Some a -> auth ctx a.mechanism (Some (a.username, a.password))
     | None -> return `Anonymous ) >>= fun _status ->
-  let* code, txts = send ctx Value.Mail_from (sender, []) >>= fun () -> recv ctx Value.Code in
+  let parameters =
+    if has_8bit_mime_transport_extension
+    then [ "BODY", Some "8BITMIME" ]
+    else [] in
+  let* code, txts = send ctx Value.Mail_from (sender, parameters) >>= fun () -> recv ctx Value.Code in
   let rec go = function
     | [] ->
       send ctx Value.Data () >>= fun () ->
