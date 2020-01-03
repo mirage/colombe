@@ -37,7 +37,7 @@ let pp_error ppf = function
   | `Expected_string s -> Fmt.pf ppf "Expected_string: %s" s
   | `Expected_eol -> Fmt.string ppf "Expected end-of-line"
   | `Expected_eol_or_space -> Fmt.string ppf "Expected end-of-line or space"
-  | `No_enough_space -> Fmt.string ppf "No enough space"
+  | `No_enough_space -> Fmt.string ppf "Not enough space"
   | `Assert_predicate _ -> Fmt.string ppf "Assert predicate"
 
 type 'err info =
