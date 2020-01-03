@@ -18,7 +18,7 @@ type error =
   (* | Invalid_command of string *)
   | `Expected_eol
   | `Expected_eol_or_space
-  | `No_enough_space
+  | `Not_enough_space
   | `Assert_predicate of (char -> bool) (* TODO: (char -> bool) to char list *) ]
   (* | Invalid_code of int *)
 
