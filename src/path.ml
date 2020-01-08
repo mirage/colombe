@@ -3,6 +3,8 @@ type t =
   ; domain : Domain.t
   ; rest : Domain.t list }
 
+type mailbox = [ `String of string | `Dot_string of string list ] * Domain.t
+
 let equal_local a b = match a, b with
   | (`String a | `Dot_string [ a ]),
     (`String b | `Dot_string [ b ]) ->
