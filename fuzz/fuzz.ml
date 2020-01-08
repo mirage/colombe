@@ -29,7 +29,7 @@ let alphabet_from_predicate predicate =
       go idx (n - 1) in
   go 0 255 ; Bytes.unsafe_to_string res
 
-let ldh_str = alphabet_from_predicate Colombe.Domain.Parser.(is_alpha or is_digit or is_dash)
+let ldh_str = alphabet_from_predicate Colombe.Domain.Decoder.(is_alpha or is_digit or is_dash)
 let ldh_str = map [ dynamic_bind (range ~min:1 78) (string_from_alphabet ldh_str) ] @@ fun ldh_str ->
   if ldh_str.[String.length ldh_str - 1] = '-' then bad_test () else ldh_str
 
@@ -38,8 +38,8 @@ let sub_domain = map [ ldh_str ] @@ fun sub_domain ->
 
 let domain = map [ list1 sub_domain ] @@ fun domain -> Colombe.Domain.Domain domain
 
-let let_dig = alphabet_from_predicate Colombe.Domain.Parser.(is_alpha or is_digit)
-let dcontent = alphabet_from_predicate Colombe.Domain.Parser.is_dcontent
+let let_dig = alphabet_from_predicate Colombe.Domain.Decoder.(is_alpha or is_digit)
+let dcontent = alphabet_from_predicate Colombe.Domain.Decoder.is_dcontent
 
 let extension = map [ ldh_str; dynamic_bind (range ~min:1 78) (string_from_alphabet dcontent) ] @@ fun ldh_str value ->
   Colombe.Domain.Extension (ldh_str, value)
@@ -56,7 +56,7 @@ let ipv6 = map [ bytes ]
 
 let domain_and_address_literal = choose [ ipv4; ipv6; extension; domain ]
 
-let esmtp_keyword = alphabet_from_predicate Colombe.Domain.Parser.(is_alpha or is_digit)
+let esmtp_keyword = alphabet_from_predicate Colombe.Domain.Decoder.(is_alpha or is_digit)
 let esmtp_keyword = dynamic_bind (range ~min:1 78) (string_from_alphabet esmtp_keyword)
 let esmtp_param = alphabet_from_predicate (function '\033' .. '\060' | '\062' .. '\126' -> true | _ -> false)
 let esmtp_param = dynamic_bind (range ~min:1 78) (string_from_alphabet esmtp_param)
@@ -64,7 +64,7 @@ let esmtp_param = dynamic_bind (range ~min:1 78) (string_from_alphabet esmtp_par
 let mail_parameter = map [ esmtp_keyword; option esmtp_param ] @@ fun k v -> (k, v)
 let mail_parameters = list mail_parameter
 
-let atext = alphabet_from_predicate Colombe.Path.Parser.is_atext
+let atext = alphabet_from_predicate Colombe.Path.Decoder.is_atext
 let atext = dynamic_bind (range ~min:1 78) (string_from_alphabet atext)
 
 let local = map [ list1 atext ] @@ fun lst -> `Dot_string lst (* TODO: [`String] *)
