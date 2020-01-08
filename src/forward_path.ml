@@ -14,15 +14,15 @@ let equal a b = match a, b with
   | Forward_path a, Forward_path b -> Path.equal a b
   | _, _ -> false
 
-module Parser = struct
+module Decoder = struct
   open Angstrom
 
-  let forward_path = Path.Parser.path
-  let mail_parameters = Reverse_path.Parser.mail_parameters
+  let forward_path = Path.Decoder.path
+  let mail_parameters = Reverse_path.Decoder.mail_parameters
 
   let of_string x =
     let p =
-      (string "<Postmaster@" *> Domain.Parser.domain <* char '>' >>| fun domain -> Domain domain)
+      (string "<Postmaster@" *> Domain.Decoder.domain <* char '>' >>| fun domain -> Domain domain)
       <|> (string "<Postmaster>" *> return Postmaster)
       <|> (forward_path >>| fun path -> Forward_path path) in
     let p = p

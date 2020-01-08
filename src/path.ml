@@ -3,6 +3,8 @@ type t =
   ; domain : Domain.t
   ; rest : Domain.t list }
 
+type mailbox = [ `String of string | `Dot_string of string list ] * Domain.t
+
 let equal_local a b = match a, b with
   | (`String a | `Dot_string [ a ]),
     (`String b | `Dot_string [ b ]) ->
@@ -29,19 +31,19 @@ let pp ppf { local; domain; rest; } =
       Fmt.(list ~sep:(const string ",") (prefix (const string "@") Domain.pp)) rest
       pp_local local Domain.pp domain
 
-module Parser = struct
+module Decoder = struct
   open Angstrom
 
-  let at_domain = char '@' *> Domain.Parser.domain
+  let at_domain = char '@' *> Domain.Decoder.domain
 
   let a_d_l = at_domain >>= fun x -> many (char ',' *> at_domain) >>| fun r -> x :: r
 
   let is_atext = function
     | 'a' .. 'z'
-    |'A' .. 'Z'
-    |'0' .. '9'
-    |'!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '/' | '=' | '?'
-    |'^' | '_' | '`' | '{' | '}' | '|' | '~' ->
+    | 'A' .. 'Z'
+    | '0' .. '9'
+    | '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '/' | '=' | '?'
+    | '^' | '_' | '`' | '{' | '}' | '|' | '~' ->
       true
     | _ -> false
 
@@ -65,7 +67,7 @@ module Parser = struct
 
   let mailbox =
     local_part
-    >>= fun local -> char '@' *> (Domain.Parser.domain <|> Domain.Parser.address_literal)
+    >>= fun local -> char '@' *> (Domain.Decoder.domain <|> Domain.Decoder.address_literal)
     >>| fun domain -> (local, domain)
 
   let path =

@@ -115,13 +115,13 @@ module Decoder = struct
   let mail decoder =
     let raw_crlf, off, len = peek_while_eol decoder in
     let reverse_path =
-      Reverse_path.Parser.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
+      Reverse_path.Decoder.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
     decoder.pos <- decoder.pos + len ; return (`Mail reverse_path) decoder
 
   let recipient decoder =
     let raw_crlf, off, len = peek_while_eol decoder in
     let forward_path =
-      Forward_path.Parser.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
+      Forward_path.Decoder.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
     decoder.pos <- decoder.pos + len ; return (`Recipient forward_path) decoder
 
   let help decoder =

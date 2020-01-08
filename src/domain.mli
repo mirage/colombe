@@ -4,16 +4,19 @@ type t =
   | Extension of string * string
   | Domain of string list
 
+val compare : t -> t -> int
 val equal : t -> t -> bool
 val pp : t Fmt.t
 
-module Parser : sig
+module Decoder : sig
   val ( or ) : ('a -> bool) -> ('a -> bool) -> 'a -> bool
   val is_alpha : char -> bool
   val is_digit : char -> bool
   val is_dash : char -> bool
   val is_dcontent: char -> bool
 
+  val ipv4_address_literal : Ipaddr.V4.t Angstrom.t
+  val ipv6_addr : Ipaddr.V6.t Angstrom.t
   val address_literal : t Angstrom.t
   val domain : t Angstrom.t
 end
