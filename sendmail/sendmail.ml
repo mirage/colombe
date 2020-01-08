@@ -9,7 +9,7 @@ module Value = struct
   type mail_from = Reverse_path.t * (string * string option) list
   type rcpt_to = Forward_path.t * (string * string option) list
   type auth = PLAIN
-  
+
   type pp_220 = string list
   type pp_221 = string list
   type pp_250 = string list
@@ -45,7 +45,7 @@ module Value = struct
 
   type encoder = Encoder.encoder
   type decoder = Decoder.decoder
-  
+
   type 'x send =
     | Helo : helo send
     | Mail_from : mail_from send
@@ -55,7 +55,7 @@ module Value = struct
     | Quit : unit send
     | Auth : auth send
     | Payload : string send
-  
+
   type 'x recv =
     | PP_220 : pp_220 recv
     | PP_221 : pp_221 recv
@@ -67,12 +67,7 @@ module Value = struct
     : type a. encoder -> a send -> a -> (unit, [> Encoder.error ]) t
     = fun encoder w v ->
       let fiber : a send -> [> Encoder.error ] Encoder.state = function
-        | Payload   ->
-          let k encoder =
-            Encoder.write v encoder ;
-            Encoder.write "\r\n" encoder ;
-            Encoder.flush (fun _ -> Encoder.Done) encoder in
-          Encoder.safe k encoder
+        | Payload   -> Request.Encoder.request (`Payload v) encoder
         | Helo      -> Request.Encoder.request (`Hello v) encoder
         | Mail_from -> Request.Encoder.request (`Mail v) encoder
         | Rcpt_to   -> Request.Encoder.request (`Recipient v) encoder
