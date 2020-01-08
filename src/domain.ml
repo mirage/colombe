@@ -22,7 +22,7 @@ let pp ppf = function
   | Extension (k, v) -> Fmt.pf ppf "%s:%s" k v
   | Domain l -> Fmt.pf ppf "%a" Fmt.(list ~sep:(const string ".") string) l
 
-module Parser = struct
+module Decoder = struct
   open Angstrom
 
   let ( or ) a b = fun x -> a x || b x
@@ -49,7 +49,7 @@ module Parser = struct
     >>= fun x -> many (char '.' *> sub_domain)
     >>| fun r -> Domain (x :: r)
 
-  (* From Mr. MIME. *)
+  (* XXX(dinosaure): from mrmime. *)
 
   let is_dcontent = function
     | '\033' .. '\090' | '\094' .. '\126' -> true
@@ -122,8 +122,8 @@ module Encoder = struct
     | Domain l -> Fmt.strf "%a" Fmt.(list ~sep:(const string ".") string) l
 end
 
-let of_string = Parser.of_string
-let of_string_exn = Parser.of_string_exn
+let of_string = Decoder.of_string
+let of_string_exn = Decoder.of_string_exn
 let to_string = Encoder.to_string
 
 exception Break
@@ -134,8 +134,8 @@ let satisfy predicate x =
   with Break -> false
 
 let extension k v =
-  let is_ldh = Parser.(is_alpha or is_digit or is_dash) in
-  let is_dcontent = Parser.is_dcontent in
+  let is_ldh = Decoder.(is_alpha or is_digit or is_dash) in
+  let is_dcontent = Decoder.is_dcontent in
   if String.length k > 0 && satisfy is_ldh k && k.[String.length k - 1] <> '-'
      && String.length v > 0 && satisfy is_dcontent v
   then Ok (Extension (k, v))

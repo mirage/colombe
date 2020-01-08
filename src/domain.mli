@@ -7,7 +7,7 @@ type t =
 val equal : t -> t -> bool
 val pp : t Fmt.t
 
-module Parser : sig
+module Decoder : sig
   val ( or ) : ('a -> bool) -> ('a -> bool) -> 'a -> bool
   val is_alpha : char -> bool
   val is_digit : char -> bool

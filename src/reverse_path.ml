@@ -7,14 +7,14 @@ let equal a b = match a, b with
 
 let pp = Fmt.option Path.pp
 
-module Parser = struct
+module Decoder = struct
   open Angstrom
 
-  let reverse_path = (Path.Parser.path >>| fun t -> Some t) <|> (string "<>" *> return None)
+  let reverse_path = (Path.Decoder.path >>| fun t -> Some t) <|> (string "<>" *> return None)
 
   let esmtp_keyword =
-    satisfy Domain.Parser.(is_alpha or is_digit)
-    >>= fun pre -> take_while Domain.Parser.(is_alpha or is_digit or is_dash)
+    satisfy Domain.Decoder.(is_alpha or is_digit)
+    >>= fun pre -> take_while Domain.Decoder.(is_alpha or is_digit or is_dash)
     >>| fun lst -> String.concat "" [ String.make 1 pre ; lst ]
 
   let esmtp_value = take_while1 (function '\033' .. '\060' | '\062' .. '\126' -> true | _ -> false)
