@@ -4,6 +4,7 @@ type t =
   | Extension of string * string
   | Domain of string list
 
+val compare : t -> t -> int
 val equal : t -> t -> bool
 val pp : t Fmt.t
 

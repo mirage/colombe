@@ -16,6 +16,30 @@ let equal a b = match a, b with
      with _ -> false)
   | _, _ -> false
 
+let compare a b =
+  let sup = 1 and inf = (-1) in
+  match a, b with
+  | Domain a, Domain b ->
+    let rec go a b = match a, b with
+      | [], [] -> 0
+      | a :: ar, b :: br ->
+        let res = String.compare (String.lowercase_ascii a) (String.lowercase_ascii b) in
+        if res = 0 then go ar br else res
+      | [], _ :: _ -> inf | _ :: _, [] -> sup in
+    go a b
+  | IPv4 ipv4, IPv6 ipv6 | IPv6 ipv6, IPv4 ipv4 ->
+    Ipaddr.(compare (V4 ipv4) (V6 ipv6))
+  | IPv6 a, IPv6 b -> Ipaddr.V6.compare a b
+  | IPv4 a, IPv4 b -> Ipaddr.V4.compare a b
+  | Extension (ka, va), Extension (kb, vb) ->
+    let ret = String.compare ka kb in
+    if ret = 0 then String.compare va vb else ret
+  | Domain _, _ -> sup
+  | (IPv4 _ | IPv6 _), Domain _  -> inf
+  | IPv6 _, _ -> sup
+  | IPv4 _, _ -> sup
+  | Extension _, (Domain _ | IPv4 _ | IPv6 _) -> inf
+
 let pp ppf = function
   | IPv4 ipv4 -> Ipaddr.V4.pp ppf ipv4
   | IPv6 ipv6 -> Ipaddr.V6.pp ppf ipv6
