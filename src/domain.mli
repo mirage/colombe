@@ -15,6 +15,8 @@ module Decoder : sig
   val is_dash : char -> bool
   val is_dcontent: char -> bool
 
+  val ipv4_address_literal : Ipaddr.V4.t Angstrom.t
+  val ipv6_addr : Ipaddr.V6.t Angstrom.t
   val address_literal : t Angstrom.t
   val domain : t Angstrom.t
 end
