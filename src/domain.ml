@@ -16,13 +16,37 @@ let equal a b = match a, b with
      with _ -> false)
   | _, _ -> false
 
+let compare a b =
+  let sup = 1 and inf = (-1) in
+  match a, b with
+  | Domain a, Domain b ->
+    let rec go a b = match a, b with
+      | [], [] -> 0
+      | a :: ar, b :: br ->
+        let res = String.compare (String.lowercase_ascii a) (String.lowercase_ascii b) in
+        if res = 0 then go ar br else res
+      | [], _ :: _ -> inf | _ :: _, [] -> sup in
+    go a b
+  | IPv4 ipv4, IPv6 ipv6 | IPv6 ipv6, IPv4 ipv4 ->
+    Ipaddr.(compare (V4 ipv4) (V6 ipv6))
+  | IPv6 a, IPv6 b -> Ipaddr.V6.compare a b
+  | IPv4 a, IPv4 b -> Ipaddr.V4.compare a b
+  | Extension (ka, va), Extension (kb, vb) ->
+    let ret = String.compare ka kb in
+    if ret = 0 then String.compare va vb else ret
+  | Domain _, _ -> sup
+  | (IPv4 _ | IPv6 _), Domain _  -> inf
+  | IPv6 _, _ -> sup
+  | IPv4 _, _ -> sup
+  | Extension _, (Domain _ | IPv4 _ | IPv6 _) -> inf
+
 let pp ppf = function
   | IPv4 ipv4 -> Ipaddr.V4.pp ppf ipv4
   | IPv6 ipv6 -> Ipaddr.V6.pp ppf ipv6
   | Extension (k, v) -> Fmt.pf ppf "%s:%s" k v
   | Domain l -> Fmt.pf ppf "%a" Fmt.(list ~sep:(const string ".") string) l
 
-module Parser = struct
+module Decoder = struct
   open Angstrom
 
   let ( or ) a b = fun x -> a x || b x
@@ -49,7 +73,7 @@ module Parser = struct
     >>= fun x -> many (char '.' *> sub_domain)
     >>| fun r -> Domain (x :: r)
 
-  (* From Mr. MIME. *)
+  (* XXX(dinosaure): from mrmime. *)
 
   let is_dcontent = function
     | '\033' .. '\090' | '\094' .. '\126' -> true
@@ -122,8 +146,8 @@ module Encoder = struct
     | Domain l -> Fmt.strf "%a" Fmt.(list ~sep:(const string ".") string) l
 end
 
-let of_string = Parser.of_string
-let of_string_exn = Parser.of_string_exn
+let of_string = Decoder.of_string
+let of_string_exn = Decoder.of_string_exn
 let to_string = Encoder.to_string
 
 exception Break
@@ -134,8 +158,8 @@ let satisfy predicate x =
   with Break -> false
 
 let extension k v =
-  let is_ldh = Parser.(is_alpha or is_digit or is_dash) in
-  let is_dcontent = Parser.is_dcontent in
+  let is_ldh = Decoder.(is_alpha or is_digit or is_dash) in
+  let is_dcontent = Decoder.is_dcontent in
   if String.length k > 0 && satisfy is_ldh k && k.[String.length k - 1] <> '-'
      && String.length v > 0 && satisfy is_dcontent v
   then Ok (Extension (k, v))
