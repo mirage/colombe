@@ -18,7 +18,8 @@ type t =
   | `Verify of string
   | `Reset
   | `Quit
-  | `Verb of string * string list ]
+  | `Verb of string * string list
+  | `Payload of string ]
 
 let equal_parameters a b =
   let a = List.sort (fun (ka, _) (kb, _) -> String.compare ka kb) a in
@@ -68,6 +69,7 @@ let pp ppf = function
   | `Reset -> Fmt.string ppf "Reset"
   | `Quit -> Fmt.string ppf "Quit"
   | `Verb (v, a) -> Fmt.pf ppf "(Verb %s %a)" v Fmt.(Dump.list string) a
+  | `Payload v -> Fmt.pf ppf "%s" v
 
 module Decoder = struct
   open Decoder
@@ -96,16 +98,21 @@ module Decoder = struct
 
   let command k decoder =
     let raw, off, len = peek_while_eol_or_space decoder in
-    let command = match Bytes.unsafe_get raw (off + len - 1) with
-      | ' ' -> Bytes.sub_string raw off (len - 1)
-      | '\n' -> Bytes.sub_string raw off (len - 2)
+    let data, kind = match Bytes.unsafe_get raw (off + len - 1) with
+      | ' ' -> Bytes.sub_string raw off (len - 1), `Command
+      | '\n' -> Bytes.sub_string raw off (len - 2), `Payload
       | _ -> leave_with decoder `Expected_eol_or_space in
-    match Hashtbl.find trie command with
+    match Hashtbl.find trie data with
     | command ->
       decoder.pos <- decoder.pos + len ; k command decoder
     | exception Not_found ->
-      decoder.pos <- decoder.pos + len
-    ; k (`Verb command) decoder
+      match kind with
+      | `Command ->
+        decoder.pos <- decoder.pos + len
+      ; k (`Verb data) decoder
+      | `Payload ->
+        decoder.pos <- decoder.pos + len
+      ; k (`Payload data) decoder
 
   let hello (decoder : decoder) =
     let raw_crlf, off, len = peek_while_eol decoder in
@@ -168,6 +175,7 @@ module Decoder = struct
         let raw = Bytes.sub_string raw_crlf off (len - 2) in
         let v = `Verb (verb, Astring.String.cuts ~sep:" " ~empty:true raw) in
         decoder.pos <- decoder.pos + len ; return v decoder
+      | `Payload payload -> return (`Payload payload) decoder
     in command k decoder
 
   let request decoder =
@@ -291,6 +299,8 @@ module Encoder = struct
       write verb encoder
     ; List.iter (fun arg -> write " " encoder ; write arg encoder) args
     ; crlf encoder
+    | `Payload v ->
+      write v encoder ; crlf encoder
 
   let request command encoder =
     let k encoder = request command encoder ; Done in
