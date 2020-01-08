@@ -10,7 +10,8 @@ type t =
   | `Verify of string
   | `Reset
   | `Quit
-  | `Verb of string * string list ]
+  | `Verb of string * string list
+  | `Payload of string ]
 
 val equal : t -> t -> bool
 val pp : t Fmt.t
