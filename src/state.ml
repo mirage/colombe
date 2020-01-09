@@ -12,13 +12,23 @@ type ('a, 'err) t =
   | Return of 'a
   | Error of 'err
 
+let rec reword_error
+  : type v a b. (a -> b) -> (v, a) t -> (v, b) t
+  = fun f -> function
+  | Error err -> Error (f err)
+  | Read { k; buffer; off; len; } ->
+    Read { k= reword_error f <.> k; buffer; off; len; }
+  | Write { k; buffer; off; len; } ->
+    Write { k= reword_error f <.> k; buffer; off; len; }
+  | Return _ as x -> x
+
 module Context = struct
   type t =
     { encoder : Encoder.encoder
     ; decoder : Decoder.decoder }
   type encoder = Encoder.encoder
   type decoder = Decoder.decoder
-  
+
   let make () =
     { encoder= Encoder.encoder ()
     ; decoder= Decoder.decoder () }
