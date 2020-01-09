@@ -23,16 +23,13 @@ module type VALUE = sig
   val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, error) State.t
 end
 
-module Make_with_tls (Value : VALUE) : sig
-  type 'x send = 'x Value.send
-  type 'x recv = 'x Value.recv
+module type S = sig
+  type 'x send
+  type 'x recv
 
-  type error =
-    [ Encoder.error
-    | Decoder.error
-    | `Protocol of Value.error
-    | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+  type error
+
+  val pp_error : error Fmt.t
 
   type encoder = Context_with_tls.t
   type decoder = Context_with_tls.t
@@ -43,9 +40,19 @@ module Make_with_tls (Value : VALUE) : sig
   val encode : encoder -> 'a send -> 'a -> (unit, error) State.t
   val decode : decoder -> 'a recv -> ('a, error) State.t
 end
+(* {b Note.} Even if [Make_with_tls.encoder = Make_with_tls.decoder],
+   idiomaticaly a server will start to decoder and a client will start to
+   encode. *)
 
-(* {b Note.} Even if [Make_with_tls.encoder = Make_with_tls.decoder], idiomaticaly a server
-  will start to decoder and a client will start to encode. *)
+module Make_with_tls (Value : VALUE)
+  : S with type 'x send = 'x Value.send
+       and type 'x recv = 'x Value.recv
+       and type error =
+             [ Encoder.error
+             | Decoder.error
+             | `Protocol of Value.error
+             | `Tls_alert of Tls.Packet.alert_type
+             | `Tls_failure of Tls.Engine.failure ]
 
 type domain = Domain.t
 type reverse_path = Reverse_path.t
