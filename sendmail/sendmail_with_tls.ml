@@ -382,9 +382,16 @@ module Make_with_tls (Value : VALUE)
   let decode
     : type a. decoder -> a recv -> (a, [> Decoder.error ]) t
     = fun ctx w ->
-      let fiber = Value.decode_without_tls ctx.Context_with_tls.context.Context.decoder w in
+      let decoder = ctx.Context_with_tls.context.Context.decoder in
+      let fiber = Value.decode_without_tls decoder w in
       let fiber = reword_error (fun p -> `Protocol p) fiber in
-      go_with_tls ctx fiber Cstruct.empty
+
+      (* XXX(dinosaure): [decoder] can already contains something.
+         TODO(dinosaure): [?relax] as an argument? *)
+
+      if Decoder.at_least_one_line ~relax:true decoder
+      then fiber
+      else go_with_tls ctx fiber Cstruct.empty
 end
 
 module Value = Make_with_tls(Value_without_tls)
