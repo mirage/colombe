@@ -111,21 +111,21 @@ let while1 predicate decoder =
   (* XXX(dinosaure): avoid sub-string operation. *)
   decoder.pos <- !idx ; sub
 
-let at_least_one_line decoder =
+let at_least_one_line ?(relax= true) decoder =
   let pos = ref decoder.pos in
   let chr = ref '\000' in
   let has_cr = ref false in
   while !pos < decoder.max
         &&  ( chr := Bytes.unsafe_get decoder.buffer !pos
-            ; not (!chr = '\n' && !has_cr) )
+            ; not (!chr = '\n' && (!has_cr || relax)) )
   do has_cr := !chr = '\r' ; incr pos done ;
   !pos < decoder.max
   && !chr = '\n'
-  && !has_cr
+  && (!has_cr || relax)
 
 let prompt
-  : (decoder -> ('v, [> error ] as 'err) state) -> decoder -> ('v, 'err) state
-  = fun k decoder ->
+  : ?relax:bool -> (decoder -> ('v, [> error ] as 'err) state) -> decoder -> ('v, 'err) state
+  = fun ?relax k decoder ->
   if decoder.pos > 0
   then (* XXX(dinosaure): compress *)
     (let rest = decoder.max - decoder.pos in
@@ -137,7 +137,7 @@ let prompt
     then Error { error= `Not_enough_space
                ; buffer= decoder.buffer
                ; committed= decoder.pos }
-    else if not (at_least_one_line { decoder with max= off })
+    else if not (at_least_one_line ?relax { decoder with max= off })
     (* XXX(dinosaure): we make a new decoder here and we did __not__ set [decoder.max] owned by end-user,
        and this is exactly what we want. *)
     then Read { buffer= decoder.buffer
@@ -149,31 +149,31 @@ let prompt
         safe k decoder ) in
   go decoder.max
 
-let peek_while_eol decoder =
+let peek_while_eol ?(relax= false) decoder =
   let idx = ref decoder.pos in
   let chr = ref '\000' in
   let has_cr = ref false in
 
   while !idx < end_of_input decoder
         && ( chr := Bytes.unsafe_get decoder.buffer !idx
-            ; not (!chr == '\n' && !has_cr) )
+            ; not (!chr == '\n' && (!has_cr || relax)) )
   do has_cr := !chr == '\r' ; incr idx done ;
 
-  if !idx < end_of_input decoder && !chr == '\n' && !has_cr
-  then ( assert (!idx + 1 - decoder.pos > 1)
+  if !idx < end_of_input decoder && !chr == '\n' && (!has_cr || relax)
+  then ( assert (!idx + 1 - decoder.pos > 0)
        ; decoder.buffer, decoder.pos, !idx + 1 - decoder.pos )
   else leave_with decoder `Expected_eol
 
-let peek_while_eol_or_space decoder =
+let peek_while_eol_or_space ?(relax= false) decoder =
   let idx = ref decoder.pos in
   let chr = ref '\000' in
   let has_cr = ref false in
 
   while !idx < end_of_input decoder
         && ( chr := Bytes.unsafe_get decoder.buffer !idx
-           ; not (!chr = '\n' && !has_cr) && !chr <> ' ')
+           ; not (!chr = '\n' && (!has_cr || relax)) && !chr <> ' ')
   do has_cr := !chr = '\r' ; incr idx done ;
 
-  if !idx < end_of_input decoder && ((!chr = '\n' && !has_cr) || (!chr = ' '))
+  if !idx < end_of_input decoder && ((!chr = '\n' && (!has_cr || relax)) || (!chr = ' '))
   then ( decoder.buffer, decoder.pos, !idx + 1 - decoder.pos )
   else leave_with decoder `Expected_eol_or_space
