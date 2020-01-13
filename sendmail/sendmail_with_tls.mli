@@ -39,6 +39,7 @@ module type S = sig
 
   val starttls_as_client : encoder -> Tls.Config.client -> (unit, error) State.t
   val starttls_as_server : decoder -> Tls.Config.server -> (unit, error) State.t
+  val close : encoder -> (unit, error) State.t
 
   val encode : encoder -> 'a send -> 'a -> (unit, error) State.t
   val decode : decoder -> 'a recv -> ('a, error) State.t

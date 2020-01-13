@@ -143,6 +143,7 @@ module type S = sig
 
   val starttls_as_client : encoder -> Tls.Config.client -> (unit, error) State.t
   val starttls_as_server : decoder -> Tls.Config.server -> (unit, error) State.t
+  val close : encoder -> (unit, error) State.t
 
   val encode : encoder -> 'a send -> 'a -> (unit, error) State.t
   val decode : decoder -> 'a recv -> ('a, error) State.t
@@ -354,6 +355,22 @@ module Make_with_tls (Value : VALUE)
 
     Log.debug (fun m -> m "Start TLS.") ;
     handle_handshake ctx state (fun state -> ctx.tls <- Some state ; Return ())
+
+  let close ctx = match ctx.Context_with_tls.tls with
+    | Some state ->
+      let state, raw = Tls.Engine.send_close_notify state in
+      ctx.tls <- Some state ;
+      let rec loop len =
+        let raw = Cstruct.shift raw len in
+        if Cstruct.len raw = 0
+        then Return ()
+        else
+          Write { k= loop
+                ; buffer= Cstruct.to_string raw
+                ; off= 0
+                ; len= Cstruct.len raw } in
+      Write { k= loop; buffer= Cstruct.to_string raw; off= 0; len= Cstruct.len raw }
+    | None -> Return ()
 
   let encode
     : type a. encoder -> a send -> a -> (unit, [> Encoder.error ]) t
