@@ -2,6 +2,8 @@ type encoder =
   { payload : Bytes.t
   ; mutable pos : int }
 
+let pp ppf _t = Fmt.string ppf "#encoder"
+
 type error = [ `Not_enough_space ]
 
 let pp_error ppf `Not_enough_space = Fmt.string ppf "No enough space"

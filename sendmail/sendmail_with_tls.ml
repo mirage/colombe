@@ -11,17 +11,38 @@ module Context_with_tls = struct
   type encoder = t
   type decoder = t
 
+  let pp ppf t =
+    Fmt.pf ppf
+      "{ @[<hov>context= @[<hov>%a@];@ \
+                tls= #state@] }"
+      Context.pp t.context
+
   let encoder x = x
   let decoder x = x
   let make () =
     { context= Context.make ()
     ; tls= None }
+
+  let tls { tls; _ } = match tls with
+    | Some _ -> true | _ -> false
 end
 
 let src = Logs.Src.create "sendmail-with-tls" ~doc:"logs sendmail's event with TLS"
 module Log = (val Logs.src_log src : Logs.LOG)
 
-module Value = struct
+module type VALUE = sig
+  type 'x send
+  type 'x recv
+
+  type error = private [> Decoder.error | Encoder.error ]
+
+  val pp_error : error Fmt.t
+
+  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, error) t
+  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, error) t
+end
+
+module Value_without_tls = struct
   type helo = Domain.t
   type mail_from = Reverse_path.t * (string * string option) list
   type rcpt_to = Forward_path.t * (string * string option) list
@@ -33,18 +54,9 @@ module Value = struct
   type tp_354 = string list
   type code = int * string list
 
-  type error =
-    [ Sendmail.error
-    | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+  type error = Sendmail.error
 
-  let pp_error ppf = function
-    | #Sendmail.error as err -> Sendmail.pp_error ppf err
-    | `Tls_alert alert -> Fmt.pf ppf "TLS alert: %s" (Tls.Packet.alert_type_to_string alert)
-    | `Tls_failure err -> Fmt.pf ppf "TLS failure: %s" (Tls.Packet.alert_type_to_string (Tls.Engine.alert_of_failure err))
-
-  type encoder = Context_with_tls.t
-  type decoder = Context_with_tls.t
+  let pp_error = Sendmail.pp_error
 
   type 'x send =
     | Helo : helo send
@@ -116,6 +128,58 @@ module Value = struct
           Read { k= go <.> continue; buffer; off; len; }
         | Decoder.Error { error; _ } -> Error error in
       go (Reply.Decoder.response decoder)
+end
+
+module type S = sig
+  type 'x send
+  type 'x recv
+
+  type error
+
+  val pp_error : error Fmt.t
+
+  type encoder
+  type decoder
+
+  val starttls_as_client : encoder -> Tls.Config.client -> (unit, error) State.t
+  val starttls_as_server : decoder -> Tls.Config.server -> (unit, error) State.t
+  val close : encoder -> (unit, error) State.t
+
+  val encode : encoder -> 'a send -> 'a -> (unit, error) State.t
+  val decode : decoder -> 'a recv -> ('a, error) State.t
+end
+
+module Make_with_tls (Value : VALUE)
+  : S with type 'x send = 'x Value.send
+       and type 'x recv = 'x Value.recv
+       and type error =
+             [ Encoder.error
+             | Decoder.error
+             | `Protocol of Value.error
+             | `Tls_alert of Tls.Packet.alert_type
+             | `Tls_failure of Tls.Engine.failure ]
+       and type encoder = Context_with_tls.encoder
+       and type decoder = Context_with_tls.decoder
+= struct
+  type error =
+    [ Encoder.error
+    | Decoder.error
+    | `Protocol of Value.error
+    | `Tls_alert of Tls.Packet.alert_type
+    | `Tls_failure of Tls.Engine.failure ]
+
+  type encoder = Context_with_tls.t
+  type decoder = Context_with_tls.t
+
+  let pp_error ppf = function
+    | #Encoder.error as x -> Encoder.pp_error ppf x
+    | #Decoder.error as x -> Decoder.pp_error ppf x
+    | `Protocol v -> Value.pp_error ppf v
+    | `Tls_alert alert -> Fmt.pf ppf "TLS alert: %s" (Tls.Packet.alert_type_to_string alert)
+    | `Tls_failure err -> Fmt.pf ppf "TLS failure: %s" (Tls.Packet.alert_type_to_string (Tls.Engine.alert_of_failure err))
+
+  type 'x send = 'x Value.send
+  type 'x recv = 'x Value.recv
 
   let only_write_tls = function
     | `Response (Some raw) ->
@@ -159,12 +223,12 @@ module Value = struct
       | `Response None -> k_fiber state
     and fiber_read state resp = function
       | `Data (Some raw) ->
-        Log.debug (fun m -> m "[rd]>>> %S (while handshake)" (Cstruct.to_string raw)) ;
+        Log.debug (fun m -> m "~> %S" (Cstruct.to_string raw)) ;
         (* XXX(dinosaure): should never occur while handshake! *)
         let buffer = ctx.Context_with_tls.context.Context.decoder.Decoder.buffer in
         let max = ctx.Context_with_tls.context.Context.decoder.Decoder.max in
         let len = min (Bytes.length buffer - max) (Cstruct.len raw) in
-        if len < Cstruct.len raw then assert false ;
+        if len < Cstruct.len raw then Fmt.failwith "Read buffer is full and TLS handshake is not done" ;
         (* TODO: this case is when, while handshake, we receive much more data
            that what we can store. We can not consume them because handshake is
            not done. But to be clear, this case should __never__ appear. *)
@@ -181,7 +245,8 @@ module Value = struct
       match Tls.Engine.handle_tls state raw with
       | `Ok (`Ok state, resp, data) ->
         fiber_read state resp data
-      | `Ok (`Eof, _resp, _data) -> assert false
+      | `Ok (`Eof, _resp, _data) ->
+        Fmt.failwith "Reach End-of-stream while handshake"
       | `Fail (failure, `Response resp) ->
         (go_to_failure failure <.> only_write_tls) (`Response (Some resp))
       | `Ok (`Alert alert, resp, _data) ->
@@ -195,7 +260,7 @@ module Value = struct
       handle_handshake ctx state k
     | Some state, Write { k; buffer; off; len; }, _ ->
       let raw = Cstruct.of_string ~off ~len buffer in
-      Log.debug (fun m -> m "[wr]>>> %S" (Cstruct.to_string raw)) ;
+      Log.debug (fun m -> m "<= %S" (Cstruct.to_string raw)) ;
       ( match Tls.Engine.send_application_data state [ raw ] with
       | Some (state, raw) ->
         let k n = ctx.tls <- Some state ; go_with_tls ctx (k n) delayed_data in
@@ -207,7 +272,7 @@ module Value = struct
       let rec fiber_read = function
         | Some raw ->
           let len = min (Cstruct.len raw) len_0 in
-          Log.debug (fun m -> m "[rd]>>> %S" (Cstruct.to_string raw)) ;
+          Log.debug (fun m -> m "=> %S" (Cstruct.to_string raw)) ;
           Cstruct.blit_to_bytes raw 0 buffer_without_tls off_0 len ;
           go_with_tls ctx (k_without_tls len) (Cstruct.shift raw len)
         | None ->
@@ -247,7 +312,7 @@ module Value = struct
         | `Ok (`Alert alert, `Response resp, `Data _) ->
           (go_to_alert alert <.> only_write_tls) (`Response resp) in
 
-      Read { k; buffer= buffer_with_tls; off= 0; len= 0x1000; }
+      Read { k; buffer= buffer_with_tls; off= 0; len= (Bytes.length buffer_with_tls); }
     | Some _, Read { k; buffer= buffer_without_tls; off= off_0; len= len_0; }, delayed_len ->
       let len = min delayed_len len_0 in
       Cstruct.blit_to_bytes delayed_data 0 buffer_without_tls off_0 len ;
@@ -260,7 +325,7 @@ module Value = struct
     | None, fiber, _ -> fiber
     | _, fiber, _ -> fiber
 
-  let starttls ctx config =
+  let starttls_as_client ctx config =
     let state, raw = Tls.Engine.client config in
     let rec k raw len =
       let raw = Cstruct.shift raw len in
@@ -269,31 +334,72 @@ module Value = struct
       else Write { k= k raw; buffer= Cstruct.to_string raw; off= 0; len= Cstruct.len raw } in
 
     (* XXX(dinosaure): clean decoder. *)
+    Log.debug (fun m -> m "Clean internal buffer to start TLS.") ;
     let buffer = ctx.Context_with_tls.context.Context.decoder.Decoder.buffer in
     Bytes.fill buffer 0 (Bytes.length buffer) '\000' ;
     ctx.Context_with_tls.context.Context.decoder.Decoder.pos <- 0 ;
     ctx.Context_with_tls.context.Context.decoder.Decoder.max <- 0 ;
 
+    Log.debug (fun m -> m "Start TLS.") ;
     Write { k= k raw; buffer= Cstruct.to_string raw; off= 0; len= Cstruct.len raw }
+
+  let starttls_as_server ctx config =
+    let state = Tls.Engine.server config in
+
+    (* XXX(dinosaure): clean decoder. *)
+    Log.debug (fun m -> m "Clean internal buffer to start TLS.") ;
+    let buffer = ctx.Context_with_tls.context.Context.decoder.Decoder.buffer in
+    Bytes.fill buffer 0 (Bytes.length buffer) '\000' ;
+    ctx.Context_with_tls.context.Context.decoder.Decoder.pos <- 0 ;
+    ctx.Context_with_tls.context.Context.decoder.Decoder.max <- 0 ;
+
+    Log.debug (fun m -> m "Start TLS.") ;
+    handle_handshake ctx state (fun state -> ctx.tls <- Some state ; Return ())
+
+  let close ctx = match ctx.Context_with_tls.tls with
+    | Some state ->
+      let state, raw = Tls.Engine.send_close_notify state in
+      ctx.tls <- Some state ;
+      let rec loop len =
+        let raw = Cstruct.shift raw len in
+        if Cstruct.len raw = 0
+        then Return ()
+        else
+          Write { k= loop
+                ; buffer= Cstruct.to_string raw
+                ; off= 0
+                ; len= Cstruct.len raw } in
+      Write { k= loop; buffer= Cstruct.to_string raw; off= 0; len= Cstruct.len raw }
+    | None -> Return ()
 
   let encode
     : type a. encoder -> a send -> a -> (unit, [> Encoder.error ]) t
     = fun ctx w v ->
-      let fiber = encode_without_tls ctx.Context_with_tls.context.Context.encoder w v in
+      let fiber = Value.encode_without_tls ctx.Context_with_tls.context.Context.encoder w v in
+      let fiber = reword_error (fun p -> `Protocol p) fiber in
       go_with_tls ctx fiber Cstruct.empty
 
   let decode
     : type a. decoder -> a recv -> (a, [> Decoder.error ]) t
     = fun ctx w ->
-      let fiber = decode_without_tls ctx.Context_with_tls.context.Context.decoder w in
-      go_with_tls ctx fiber Cstruct.empty
+      let decoder = ctx.Context_with_tls.context.Context.decoder in
+      let fiber = Value.decode_without_tls decoder w in
+      let fiber = reword_error (fun p -> `Protocol p) fiber in
+
+      (* XXX(dinosaure): [decoder] can already contains something.
+         TODO(dinosaure): [?relax] as an argument? *)
+
+      if Decoder.at_least_one_line ~relax:true decoder
+      then fiber
+      else go_with_tls ctx fiber Cstruct.empty
 end
 
+module Value = Make_with_tls(Value_without_tls)
 module Monad = State.Scheduler(Context_with_tls)(Value)
 
 let properly_quit_and_fail ctx err =
   let open Monad in
-  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+  let* _txts = send ctx Value_without_tls.Quit () >>= fun () -> recv ctx Value_without_tls.PP_221 in
   fail err
 
 let auth ctx mechanism info =
@@ -303,34 +409,33 @@ let auth ctx mechanism info =
   | Some (username, password) ->
     match mechanism with
     | Sendmail.PLAIN ->
-      let* code, txts = send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code in
+      let* code, txts = send ctx Value_without_tls.Auth mechanism >>= fun () -> recv ctx Value_without_tls.Code in
       match code with
-      | 504 -> properly_quit_and_fail ctx `Unsupported_mechanism
-      | 538 -> properly_quit_and_fail ctx `Encryption_required
-      | 534 -> properly_quit_and_fail ctx `Weak_mechanism
+      | 504 -> properly_quit_and_fail ctx (`Protocol `Unsupported_mechanism)
+      | 538 -> properly_quit_and_fail ctx (`Protocol `Encryption_required)
+      | 534 -> properly_quit_and_fail ctx (`Protocol `Weak_mechanism)
       | 334 ->
         let* () = match txts with
           | [] ->
             let payload = Base64.encode_exn (Fmt.strf "\000%s\000%s" username password) in
-            send ctx Value.Payload payload
+            send ctx Value_without_tls.Payload payload
           | x :: _ ->
             let x = Base64.decode_exn x in
             let payload = Base64.encode_exn (Fmt.strf "%s\000%s\000%s" x username password) in
-            send ctx Value.Payload payload in
-        ( recv ctx Value.Code >>= function
+            send ctx Value_without_tls.Payload payload in
+        ( recv ctx Value_without_tls.Code >>= function
             | (235, _txts) -> return `Authenticated
-            | (501, _txts) -> properly_quit_and_fail ctx `Authentication_rejected
-            | (535, _txts) -> properly_quit_and_fail ctx `Authentication_failed
-            | (code, txts) -> fail (`Unexpected_response (code, txts)) )
-      | code -> fail (`Unexpected_response (code, txts))
+            | (501, _txts) -> properly_quit_and_fail ctx (`Protocol `Authentication_rejected)
+            | (535, _txts) -> properly_quit_and_fail ctx (`Protocol `Authentication_failed)
+            | (code, txts) -> fail (`Protocol (`Unexpected_response (code, txts))) )
+      | code -> fail (`Protocol (`Unexpected_response (code, txts)))
 
 type domain = Sendmail.domain
 type reverse_path = Sendmail.reverse_path
 type forward_path = Sendmail.forward_path
-
 type authentication = Sendmail.authentication
-
 type mechanism = Sendmail.mechanism
+
 type ('a, 's) stream = unit -> ('a option, 's) io
 
 type error = Value.error
@@ -339,33 +444,33 @@ let pp_error = Value.pp_error
 
 let m0 ctx config ?authentication ~domain sender recipients =
   let open Monad in
-  recv ctx Value.PP_220 >>= fun _txts ->
-  let* _txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
-  let* _txts = send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220 in
-  let* () = Value.starttls ctx config in
-  let* _txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
+  recv ctx Value_without_tls.PP_220 >>= fun _txts ->
+  let* _txts = send ctx Value_without_tls.Helo domain >>= fun () -> recv ctx Value_without_tls.PP_250 in
+  let* _txts = send ctx Value_without_tls.Starttls () >>= fun () -> recv ctx Value_without_tls.PP_220 in
+  let* () = Value.starttls_as_client ctx config in
+  let* _txts = send ctx Value_without_tls.Helo domain >>= fun () -> recv ctx Value_without_tls.PP_250 in
   ( match authentication with
     | Some a -> auth ctx a.Sendmail.mechanism (Some (a.Sendmail.username, a.Sendmail.password))
     | None -> return `Anonymous ) >>= fun _status ->
-  let* code, txts = send ctx Value.Mail_from (sender, []) >>= fun () -> recv ctx Value.Code in
+  let* code, txts = send ctx Value_without_tls.Mail_from (sender, []) >>= fun () -> recv ctx Value_without_tls.Code in
   let rec go = function
     | [] ->
-      send ctx Value.Data () >>= fun () ->
-      recv ctx Value.TP_354 >>= fun _txts ->
+      send ctx Value_without_tls.Data () >>= fun () ->
+      recv ctx Value_without_tls.TP_354 >>= fun _txts ->
       return ()
     | x :: r ->
-      send ctx Value.Rcpt_to (x, []) >>= fun () ->
-      recv ctx Value.PP_250 >>= fun _txts ->
+      send ctx Value_without_tls.Rcpt_to (x, []) >>= fun () ->
+      recv ctx Value_without_tls.PP_250 >>= fun _txts ->
       go r in
   match code with
   | 250 -> go recipients
-  | 530 -> properly_quit_and_fail ctx `Authentication_required
-  | _ -> fail (`Unexpected_response (code, txts))
+  | 530 -> properly_quit_and_fail ctx (`Protocol (`Authentication_required))
+  | _ -> fail (`Protocol (`Unexpected_response (code, txts)))
 
 let m1 ctx =
   let open Monad in
-  let* _txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.PP_250 in
-  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+  let* _txts = send ctx Value_without_tls.Dot () >>= fun () -> recv ctx Value_without_tls.PP_250 in
+  let* _txts = send ctx Value_without_tls.Quit () >>= fun () -> recv ctx Value_without_tls.PP_221 in
   return ()
 
 let run
@@ -404,7 +509,7 @@ let sendmail { bind; return } rdwr flow ctx mail =
         | Some (state, raw) ->
           let buf = Cstruct.to_string raw in
           rdwr.wr flow buf 0 (Cstruct.len raw) >>= fun () -> go state
-        | None -> assert false in
+        | None -> go state in
     go state >>= fun state -> ctx.tls <- Some state ; return ()
 
 let sendmail ({ bind; return; } as impl) rdwr flow context config ?authentication ~domain sender recipients mail =

@@ -6,10 +6,59 @@ module Context_with_tls : sig
   type encoder
   type decoder
 
+  val pp : t Fmt.t
+
   val encoder : t -> encoder
   val decoder : t -> decoder
   val make : unit -> t
+  val tls : t -> bool
 end
+
+module type VALUE = sig
+  type 'x send
+  type 'x recv
+
+  type error = private [> Decoder.error | Encoder.error ]
+
+  val pp_error : error Fmt.t
+
+  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, error) State.t
+  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, error) State.t
+end
+
+module type S = sig
+  type 'x send
+  type 'x recv
+
+  type error
+
+  val pp_error : error Fmt.t
+
+  type encoder
+  type decoder
+
+  val starttls_as_client : encoder -> Tls.Config.client -> (unit, error) State.t
+  val starttls_as_server : decoder -> Tls.Config.server -> (unit, error) State.t
+  val close : encoder -> (unit, error) State.t
+
+  val encode : encoder -> 'a send -> 'a -> (unit, error) State.t
+  val decode : decoder -> 'a recv -> ('a, error) State.t
+end
+(* {b Note.} Even if [Make_with_tls.encoder = Make_with_tls.decoder],
+   idiomaticaly a server will start to decoder and a client will start to
+   encode. *)
+
+module Make_with_tls (Value : VALUE)
+  : S with type 'x send = 'x Value.send
+       and type 'x recv = 'x Value.recv
+       and type error =
+             [ Encoder.error
+             | Decoder.error
+             | `Protocol of Value.error
+             | `Tls_alert of Tls.Packet.alert_type
+             | `Tls_failure of Tls.Engine.failure ]
+       and type encoder = Context_with_tls.encoder
+       and type decoder = Context_with_tls.decoder
 
 type domain = Domain.t
 type reverse_path = Reverse_path.t
@@ -20,15 +69,9 @@ type authentication = Sendmail.authentication
 type ('a, 's) stream = ('a, 's) Sendmail.stream
 
 type error =
-  [ Request.Decoder.error
-  | Reply.Decoder.error
-  | `Unexpected_response of (int * string list)
-  | `Unsupported_mechanism
-  | `Encryption_required
-  | `Weak_mechanism
-  | `Authentication_rejected
-  | `Authentication_failed
-  | `Authentication_required
+  [ Decoder.error
+  | Decoder.error
+  | `Protocol of Sendmail.error
   | `Tls_alert of Tls.Packet.alert_type
   | `Tls_failure of Tls.Engine.failure ]
 

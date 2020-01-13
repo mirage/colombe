@@ -4,6 +4,8 @@ type ('a, 'err) t =
   | Return of 'a
   | Error of 'err
 
+val reword_error : ('a -> 'b) -> ('v, 'a) t -> ('v, 'b) t
+
 module Context : sig
   type t =
     { encoder : Encoder.encoder
@@ -11,7 +13,9 @@ module Context : sig
 
   type decoder = Decoder.decoder
   type encoder = Encoder.encoder
-  
+
+  val pp : t Fmt.t
+
   val encoder : t -> encoder
   val decoder : t -> decoder
   val make : unit -> t
@@ -33,6 +37,8 @@ module type C = sig
   type t
   type encoder
   type decoder
+
+  val pp : t Fmt.t
 
   val encoder : t -> encoder
   val decoder : t -> decoder

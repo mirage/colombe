@@ -1,4 +1,4 @@
-module type FUNCTOR = sig type 'a t end
+module type FUNCTOR = sig type +'a t end
 
 type (+'a, 't) io
 type ('l, 'r) either = L of 'l | R of 'r
@@ -12,7 +12,7 @@ type ('flow, 's) rdwr =
   ; wr : 'flow -> string -> int -> int -> (unit, 's) io }
 
 module type X = sig
-  type 'a s
+  type +'a s
   type t
 
   external inj : 'a s -> ('a, t) io = "%identity"
