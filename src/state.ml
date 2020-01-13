@@ -29,6 +29,12 @@ module Context = struct
   type encoder = Encoder.encoder
   type decoder = Decoder.decoder
 
+  let pp ppf t =
+    Fmt.pf ppf "{ @[<hov>encoder= @[<hov>%a@];@ \
+                         decoder= @[<hov>%a@]@] }"
+      Encoder.pp t.encoder
+      Decoder.pp t.decoder
+
   let make () =
     { encoder= Encoder.encoder ()
     ; decoder= Decoder.decoder () }
@@ -53,6 +59,8 @@ module type C = sig
   type t
   type encoder
   type decoder
+
+  val pp : t Fmt.t
 
   val encoder : t -> encoder
   val decoder : t -> decoder

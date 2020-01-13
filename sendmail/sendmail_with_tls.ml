@@ -11,11 +11,20 @@ module Context_with_tls = struct
   type encoder = t
   type decoder = t
 
+  let pp ppf t =
+    Fmt.pf ppf
+      "{ @[<hov>context= @[<hov>%a@];@ \
+                tls= #state@] }"
+      Context.pp t.context
+
   let encoder x = x
   let decoder x = x
   let make () =
     { context= Context.make ()
     ; tls= None }
+
+  let tls { tls; _ } = match tls with
+    | Some _ -> true | _ -> false
 end
 
 let src = Logs.Src.create "sendmail-with-tls" ~doc:"logs sendmail's event with TLS"
@@ -129,8 +138,8 @@ module type S = sig
 
   val pp_error : error Fmt.t
 
-  type encoder = Context_with_tls.t
-  type decoder = Context_with_tls.t
+  type encoder
+  type decoder
 
   val starttls_as_client : encoder -> Tls.Config.client -> (unit, error) State.t
   val starttls_as_server : decoder -> Tls.Config.server -> (unit, error) State.t
@@ -148,6 +157,8 @@ module Make_with_tls (Value : VALUE)
              | `Protocol of Value.error
              | `Tls_alert of Tls.Packet.alert_type
              | `Tls_failure of Tls.Engine.failure ]
+       and type encoder = Context_with_tls.encoder
+       and type decoder = Context_with_tls.decoder
 = struct
   type error =
     [ Encoder.error

@@ -14,6 +14,8 @@ module Context : sig
   type decoder = Decoder.decoder
   type encoder = Encoder.encoder
 
+  val pp : t Fmt.t
+
   val encoder : t -> encoder
   val decoder : t -> decoder
   val make : unit -> t
@@ -35,6 +37,8 @@ module type C = sig
   type t
   type encoder
   type decoder
+
+  val pp : t Fmt.t
 
   val encoder : t -> encoder
   val decoder : t -> decoder
