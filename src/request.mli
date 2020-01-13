@@ -17,7 +17,7 @@ val equal : t -> t -> bool
 val pp : t Fmt.t
 
 module Decoder : sig
-  type error = [ `Invalid_command of string | Decoder.error ]
+  type error = [ `Invalid_command of string | `Invalid_domain of string | Decoder.error ]
 
   val pp_error : error Fmt.t
 

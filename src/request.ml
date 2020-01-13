@@ -74,10 +74,11 @@ let pp ppf = function
 module Decoder = struct
   open Decoder
 
-  type nonrec error = [ `Invalid_command of string | error ]
+  type nonrec error = [ `Invalid_command of string | `Invalid_domain of string | error ]
 
   let pp_error ppf = function
     | `Invalid_command command -> Fmt.pf ppf "Invalid command: %S" command
+    | `Invalid_domain domain -> Fmt.pf ppf "Invalid domain: %S" domain
     | #Decoder.error as err -> pp_error ppf err
 
   (* According to RFC 5321. *)
@@ -135,7 +136,11 @@ module Decoder = struct
     let raw_eol, off, len = peek_while_eol ?relax decoder in
     let domain = without_eol (raw_eol, off, len) in
     let domain =
-      Ok (Domain.of_string_exn domain)
+      try Ok (Domain.of_string_exn domain)
+      with _exn -> match Ipaddr.of_string domain with
+        | Ok (Ipaddr.V4 ipv4) -> Rresult.R.ok (Domain.IPv4 ipv4)
+        | Ok (Ipaddr.V6 ipv6) -> Rresult.R.ok (Domain.IPv6 ipv6)
+        | Error _ -> Error (`Invalid_domain domain) in
     match domain with
     | Ok domain ->
       decoder.pos <- decoder.pos + len ;
