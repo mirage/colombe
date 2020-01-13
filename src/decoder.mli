@@ -46,7 +46,7 @@ val peek_char : decoder -> char option
 val string : string -> decoder -> unit
 val junk_char : decoder -> unit
 val while1 : (char -> bool) -> decoder -> (bytes * int * int)
-val at_least_one_line : decoder -> bool
-val prompt : (decoder -> ('v, [> error ] as 'err) state) -> decoder -> ('v, 'err) state
-val peek_while_eol : decoder -> (bytes * int * int)
-val peek_while_eol_or_space : decoder -> (bytes * int * int)
+val at_least_one_line : ?relax:bool -> decoder -> bool
+val prompt : ?relax:bool -> (decoder -> ('v, [> error ] as 'err) state) -> decoder -> ('v, 'err) state
+val peek_while_eol : ?relax:bool -> decoder -> (bytes * int * int)
+val peek_while_eol_or_space : ?relax:bool -> decoder -> (bytes * int * int)

@@ -96,92 +96,121 @@ module Decoder = struct
   let () = Hashtbl.add trie "NOOP" `Noop
   let () = Hashtbl.add trie "QUIT" `Quit
 
-  let command k decoder =
-    let raw, off, len = peek_while_eol_or_space decoder in
-    let data, kind = match Bytes.unsafe_get raw (off + len - 1) with
-      | ' ' -> Bytes.sub_string raw off (len - 1), `Command
-      | '\n' -> Bytes.sub_string raw off (len - 2), `Payload
+  type command =
+    [ `Hello | `Mail | `Recipient | `Data | `Data_end | `Reset | `Verify
+    | `Expand | `Help | `Noop | `Quit ]
+
+  let add_extension v = Hashtbl.add trie (String.uppercase_ascii v) `Extension
+  type extension = [ `Extension ]
+
+  let without_eol (raw, off, len) =
+    if len > 1 && Bytes.unsafe_get raw (off + len - 2) = '\r'
+    then Bytes.sub_string raw off (len - 2)
+    else Bytes.sub_string raw off (len - 1)
+
+  let command ?relax k decoder =
+    let raw, off, len = peek_while_eol_or_space ?relax decoder in
+    let data = match Bytes.unsafe_get raw (off + len - 1) with
+      | ' ' -> Bytes.sub_string raw off (len - 1)
+      | '\n' ->
+        if len > 1
+        && Bytes.unsafe_get raw (off + len - 2) = '\r'
+        then Bytes.sub_string raw off (len - 2)
+        else Bytes.sub_string raw off (len - 1)
       | _ -> leave_with decoder `Expected_eol_or_space in
-    match Hashtbl.find trie data with
-    | command ->
+    match Hashtbl.find trie (String.uppercase_ascii data) with
+    | #extension ->
+      if Bytes.unsafe_get raw (off + len - 1) = '\n'
+      then ( decoder.pos <- decoder.pos + len ; k (`Only_verb data) decoder )
+      else ( decoder.pos <- decoder.pos + len ; k (`Verb data) decoder )
+    | #command as command ->
       decoder.pos <- decoder.pos + len ; k command decoder
     | exception Not_found ->
-      match kind with
-      | `Command ->
-        decoder.pos <- decoder.pos + len
-      ; k (`Verb data) decoder
-      | `Payload ->
-        decoder.pos <- decoder.pos + len
-      ; k (`Payload data) decoder
+      let raw_eol, off, len = peek_while_eol ?relax decoder in
+      let v = without_eol (raw_eol, off, len) in
+      decoder.pos <- decoder.pos + len ;
+      k (`Payload v) decoder
 
-  let hello (decoder : decoder) =
-    let raw_crlf, off, len = peek_while_eol decoder in
-    let domain = Domain.of_string_exn (Bytes.sub_string raw_crlf off (len - 2)) in
-    decoder.pos <- decoder.pos + len ; return (`Hello domain) decoder
+  let hello ?relax (decoder : decoder) =
+    let raw_eol, off, len = peek_while_eol ?relax decoder in
+    let domain = without_eol (raw_eol, off, len) in
+    let domain =
+      Ok (Domain.of_string_exn domain)
+    match domain with
+    | Ok domain ->
+      decoder.pos <- decoder.pos + len ;
+      return (`Hello domain) decoder
+    | Error err -> fail decoder err
 
-  let mail decoder =
-    let raw_crlf, off, len = peek_while_eol decoder in
-    let reverse_path =
-      Reverse_path.Decoder.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
+  let mail ?relax decoder =
+    let raw_eol, off, len = peek_while_eol ?relax decoder in
+    let v = without_eol (raw_eol, off, len) in
+    let reverse_path = Reverse_path.Decoder.of_string v in
     decoder.pos <- decoder.pos + len ; return (`Mail reverse_path) decoder
 
-  let recipient decoder =
-    let raw_crlf, off, len = peek_while_eol decoder in
+  let recipient ?relax decoder =
+    let raw_eol, off, len = peek_while_eol ?relax decoder in
+    let v = without_eol (raw_eol, off, len) in
     let forward_path =
-      Forward_path.Decoder.of_string (Bytes.sub_string raw_crlf off (len - 2)) in
+      Forward_path.Decoder.of_string v in
     decoder.pos <- decoder.pos + len ; return (`Recipient forward_path) decoder
 
-  let help decoder =
+  let help ?relax decoder =
     match peek_char decoder with
     | Some _ ->
-      let raw_crlf, off, len = peek_while_eol decoder in
-      let v = `Help (Some (Bytes.sub_string raw_crlf off (len - 2))) in
+      let raw_eol, off, len = peek_while_eol ?relax decoder in
+      let v = without_eol (raw_eol, off, len) in
+      let v = `Help (Some v) in
       decoder.pos <- decoder.pos + len ; return v decoder
     | None -> return (`Help None) decoder
 
-  let noop decoder =
+  let noop ?relax decoder =
     match peek_char decoder with
     | Some _ ->
-      let raw_crlf, off, len = peek_while_eol decoder in
-      let v = `Noop (Some (Bytes.sub_string raw_crlf off (len - 2))) in
+      let raw_eol, off, len = peek_while_eol ?relax decoder in
+      let v = without_eol (raw_eol, off, len) in
+      let v = `Noop (Some v) in
       decoder.pos <- decoder.pos + len ; return v decoder
     | None -> return (`Noop None) decoder
 
-  let request decoder =
+  let request ?relax decoder =
     let k v decoder = match v with
-      | `Hello -> hello decoder
+      | `Hello -> hello ?relax decoder
       | `Mail ->
         string "FROM:" decoder ;
-        mail decoder
+        mail ?relax decoder
       | `Recipient ->
         string "TO:" decoder ;
-        recipient decoder
+        recipient ?relax decoder
       | `Data -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data decoder
       | `Data_end -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Data_end decoder
       | `Reset -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Reset decoder
       | `Verify ->
-        let raw_crlf, off, len = peek_while_eol decoder in
-        let v = `Verify (Bytes.sub_string raw_crlf off (len - 2)) in
+        let raw_eol, off, len = peek_while_eol ?relax decoder in
+        let v = without_eol (raw_eol, off, len) in
+        let v = `Verify v in
         decoder.pos <- decoder.pos + len ; return v decoder
       | `Expand ->
-        let raw_crlf, off, len = peek_while_eol decoder in
-        let v = `Expand (Bytes.sub_string raw_crlf off (len - 2)) in
+        let raw_eol, off, len = peek_while_eol ?relax decoder in
+        let v = without_eol (raw_eol, off, len) in
+        let v = `Expand v in
         decoder.pos <- decoder.pos + len ; return v decoder
       | `Help -> help decoder
       | `Noop -> noop decoder
       | `Quit -> (* assert (decoder.pos = end_of_input decoder) ; *) return `Quit decoder
+      | `Only_verb verb -> return (`Verb (verb, [])) decoder
       | `Verb verb ->
-        let raw_crlf, off, len = peek_while_eol decoder in
-        let raw = Bytes.sub_string raw_crlf off (len - 2) in
+        let raw_eol, off, len = peek_while_eol ?relax decoder in
+        let raw = without_eol (raw_eol, off, len) in
         let v = `Verb (verb, Astring.String.cuts ~sep:" " ~empty:true raw) in
         decoder.pos <- decoder.pos + len ; return v decoder
       | `Payload payload -> return (`Payload payload) decoder
-    in command k decoder
+    in command ?relax k decoder
 
-  let request decoder =
-    if at_least_one_line decoder
-    then safe request decoder
-    else prompt request decoder
+  let request ?relax decoder =
+    if at_least_one_line ?relax decoder
+    then safe (request ?relax) decoder
+    else prompt ?relax (request ?relax) decoder
 
   let of_string x =
     let decoder = decoder_from x in
