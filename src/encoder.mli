@@ -3,6 +3,8 @@ type encoder
 val io_buffer_size : int
 val encoder : unit -> encoder
 
+val pp : encoder Fmt.t
+
 type error = [ `Not_enough_space ]
 
 val pp_error : error Fmt.t
