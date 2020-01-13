@@ -6,9 +6,12 @@ module Context_with_tls : sig
   type encoder
   type decoder
 
+  val pp : t Fmt.t
+
   val encoder : t -> encoder
   val decoder : t -> decoder
   val make : unit -> t
+  val tls : t -> bool
 end
 
 module type VALUE = sig
@@ -31,8 +34,8 @@ module type S = sig
 
   val pp_error : error Fmt.t
 
-  type encoder = Context_with_tls.t
-  type decoder = Context_with_tls.t
+  type encoder
+  type decoder
 
   val starttls_as_client : encoder -> Tls.Config.client -> (unit, error) State.t
   val starttls_as_server : decoder -> Tls.Config.server -> (unit, error) State.t
@@ -53,6 +56,8 @@ module Make_with_tls (Value : VALUE)
              | `Protocol of Value.error
              | `Tls_alert of Tls.Packet.alert_type
              | `Tls_failure of Tls.Engine.failure ]
+       and type encoder = Context_with_tls.encoder
+       and type decoder = Context_with_tls.decoder
 
 type domain = Domain.t
 type reverse_path = Reverse_path.t
