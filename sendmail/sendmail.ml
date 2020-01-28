@@ -95,7 +95,10 @@ module Value = struct
       | Code, `PN_501 txts -> Return (501, txts)
       | Code, `PN_504 txts -> Return (504, txts)
       | Code, `PP_250 txts -> Return (250, txts)
-      | _, _ -> assert false in
+      | _, v ->
+        let code = Reply.code v in
+        let txts = Reply.lines v in
+        Error (`Unexpected_response (code, txts)) in
     let rec go = function
       | Decoder.Done v -> k v
       | Decoder.Read { buffer; off; len; continue; } ->
