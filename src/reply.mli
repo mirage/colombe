@@ -45,6 +45,8 @@ val pp : t Fmt.t
 val compare : t -> t -> int
 val equal : t -> t -> bool
 val v : int -> string list -> t
+val code : t -> int
+val lines : t -> string list
 
 module Decoder : sig
   type error = [ `Invalid_code of int | Decoder.error ]

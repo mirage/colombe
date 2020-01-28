@@ -121,7 +121,9 @@ module Value_without_tls = struct
         | Code, `PP_250 txts -> Return (250, txts)
         | _, _ ->
           Log.err (fun m -> m "Unexpected valid value: witness:%a value:%a" pp_witness w Reply.pp v) ;
-          assert false in
+          let code = Reply.code v in
+          let txts = Reply.lines v in
+          Error (`Unexpected_response (code, txts)) in
       let rec go = function
         | Decoder.Done v -> k v
         | Decoder.Read { buffer; off; len; continue; } ->
