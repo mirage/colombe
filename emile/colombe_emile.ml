@@ -14,6 +14,10 @@ let cast_domain = function
   | `Addr (Emile.IPv6 v) -> Ok (Colombe.Domain.IPv6 v)
   | `Addr (Emile.Ext (k, v)) -> Ok (Colombe.Domain.Extension (k, v))
 
+let of_local = function
+  | `Dot_string vs -> List.map (fun x -> `Atom x) vs
+  | `String v -> [ `String v ]
+
 let to_path ?(route= []) mailbox =
   let local = mailbox.Emile.local in
   let domain, _ = mailbox.Emile.domain in
