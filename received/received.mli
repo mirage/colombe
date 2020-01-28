@@ -65,6 +65,7 @@ end
 
 module Encoder : sig
   val received : t Prettym.t
+  val as_field : t Prettym.t
 end
 
 val of_stream : (string * int * int) stream -> (string * t list, [> Rresult.R.msg ]) result

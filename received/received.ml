@@ -269,6 +269,9 @@ module Encoder = struct
              ; !!Mrmime.Date.Encoder.date
              ; close ]
       from by (via, _with, id, _for) date_time
+
+  let as_field ppf v =
+    eval ppf [ string $ "Received"; char $ ':'; tbox 1; spaces 1; !!received; close; new_line ] v
 end
 
 let received = Field_name.v "Received"
