@@ -76,7 +76,7 @@ let protocol v = `Atom v
 let make ?from ?by ?via ?protocol ?id _for ~zone ptime =
   let date_time = Date.of_ptime ~zone ptime in
   let id = match id with Some id -> Some (`MsgID id) | None -> None in
-  { from; by; via; id; _with= protocol; _for= Some _for; date_time; }
+  { from; by; via; id; _with= protocol; _for; date_time; }
 
 let ( <.> ) f g = fun x -> f (g x)
 
