@@ -42,7 +42,7 @@ val make :
   ?via:link ->
   ?protocol:protocol ->
   ?id:Mrmime.MessageID.t ->
-  Colombe.Path.t ->
+  Colombe.Path.t option ->
   zone:Mrmime.Date.Zone.t ->
   Ptime.t -> t
 (** [make ?from ?by ?via ?protocol ?id path ~zone time]:
