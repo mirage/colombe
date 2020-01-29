@@ -239,16 +239,16 @@ module Encoder = struct
 
   let id ppf = function
     | None -> ppf
-    | Some v -> eval ppf [ string $ "id"; spaces 1; !!id ] v
+    | Some v -> eval ppf [ box; string $ "id"; spaces 1; !!id; close ] v
 
   let _for ppf v = string ppf (Path.Encoder.to_string v)
 
   let _for ppf = function
     | None -> ppf
-    | Some v -> eval ppf [ string $ "for"; spaces 1; !!_for ] v
+    | Some v -> eval ppf [ box; string $ "for"; spaces 1; !!_for; close ] v
 
   let opt_info ppf (v_via, v_with, v_id, v_for) =
-    eval ppf [ box; !!via; fws; !!_with; fws; !!id; fws; !!_for; close; char $ ';'; new_line ]
+    eval ppf [ box; !!via; fws; !!_with; fws; !!id; fws; !!_for; char $ ';'; close; new_line ]
       v_via v_with v_id v_for
 
   let from_domain ppf = function
