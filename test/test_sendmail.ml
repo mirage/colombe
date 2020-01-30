@@ -232,8 +232,28 @@ let test_5 () =
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> is_empty ()
 
-
-
+let test_6 () =
+  Alcotest.test_case "Spam" `Quick @@ fun () ->
+  let ctx = Colombe.State.Context.make () in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [ "220 smtp.gmail.com ESTMP - gsmtp"
+      ; "250-smtp.gmail.com at your service, [8.8.8.8]"
+      ; "250-AUTH LOGIN PLAIN"
+      ; "250 8BITMIME"
+      ; "550 Client host blocked!" ]
+      [ "EHLO gmail.com"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com> BODY=8BITMIME" ] in
+  let fiber = Sendmail.sendmail
+      unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
+      (fun () -> unix.return None) in
+  match Unix_scheduler.prj fiber with
+  | Error (`Unexpected_response (550, _)) -> is_empty ()
+  | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
+  | Ok _ -> Fmt.failwith "Unexpected valid result"
 
 let () =
   Alcotest.run "sendmail" [ "mock", [ test_0 ()
@@ -241,4 +261,5 @@ let () =
                                     ; test_2 ()
                                     ; test_3 ()
                                     ; test_4 ()
-                                    ; test_5 () ] ]
+                                    ; test_5 ()
+                                    ; test_6 () ] ]
