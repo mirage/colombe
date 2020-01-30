@@ -54,9 +54,11 @@ module Value_without_tls = struct
   type tp_354 = string list
   type code = int * string list
 
-  type error = Sendmail.error
+  type error = [ Sendmail.error | `STARTTLS_unavailable ]
 
-  let pp_error = Sendmail.pp_error
+  let pp_error ppf = function
+    | #Sendmail.error as err -> Sendmail.pp_error ppf err
+    | `STARTTLS_unavailable -> Fmt.pf ppf "STARTTLS unavailable"
 
   type 'x send =
     | Helo : helo send
@@ -437,37 +439,55 @@ type reverse_path = Sendmail.reverse_path
 type forward_path = Sendmail.forward_path
 type authentication = Sendmail.authentication
 type mechanism = Sendmail.mechanism
-
 type ('a, 's) stream = unit -> ('a option, 's) io
 
 type error = Value.error
 
 let pp_error = Value.pp_error
 
+let has_8bit_mime_transport_extension =
+  List.exists ((=) "8BITMIME")
+
+let has_starttls =
+  List.exists ((=) "STARTTLS")
+
+(* XXX(dinosaure): [m0] IS [Sendmail.m0] + [STARTTLS], we should functorize it over
+   a common interface. *)
+
 let m0 ctx config ?authentication ~domain sender recipients =
   let open Monad in
   recv ctx Value_without_tls.PP_220 >>= fun _txts ->
-  let* _txts = send ctx Value_without_tls.Helo domain >>= fun () -> recv ctx Value_without_tls.PP_250 in
-  let* _txts = send ctx Value_without_tls.Starttls () >>= fun () -> recv ctx Value_without_tls.PP_220 in
-  let* () = Value.starttls_as_client ctx config in
-  let* _txts = send ctx Value_without_tls.Helo domain >>= fun () -> recv ctx Value_without_tls.PP_250 in
-  ( match authentication with
-    | Some a -> auth ctx a.Sendmail.mechanism (Some (a.Sendmail.username, a.Sendmail.password))
-    | None -> return `Anonymous ) >>= fun _status ->
-  let* code, txts = send ctx Value_without_tls.Mail_from (sender, []) >>= fun () -> recv ctx Value_without_tls.Code in
-  let rec go = function
-    | [] ->
-      send ctx Value_without_tls.Data () >>= fun () ->
-      recv ctx Value_without_tls.TP_354 >>= fun _txts ->
-      return ()
-    | x :: r ->
-      send ctx Value_without_tls.Rcpt_to (x, []) >>= fun () ->
-      recv ctx Value_without_tls.PP_250 >>= fun _txts ->
-      go r in
-  match code with
-  | 250 -> go recipients
-  | 530 -> properly_quit_and_fail ctx (`Protocol (`Authentication_required))
-  | _ -> fail (`Protocol (`Unexpected_response (code, txts)))
+  let* txts = send ctx Value_without_tls.Helo domain >>= fun () -> recv ctx Value_without_tls.PP_250 in
+  let has_starttls = has_starttls txts in
+
+  if not has_starttls
+  then fail (`Protocol `STARTTLS_unavailable)
+  else
+    let* _txts = send ctx Value_without_tls.Starttls () >>= fun () -> recv ctx Value_without_tls.PP_220 in
+    let* () = Value.starttls_as_client ctx config in
+    let* txts = send ctx Value_without_tls.Helo domain >>= fun () -> recv ctx Value_without_tls.PP_250 in
+    let has_8bit_mime_transport_extension = has_8bit_mime_transport_extension txts in
+    ( match authentication with
+      | Some a -> auth ctx a.Sendmail.mechanism (Some (a.Sendmail.username, a.Sendmail.password))
+      | None -> return `Anonymous ) >>= fun _status ->
+    let parameters =
+      if has_8bit_mime_transport_extension
+      then [ "BODY", Some "8BITMIME" ]
+      else [] in
+    let* code, txts = send ctx Value_without_tls.Mail_from (sender, parameters) >>= fun () -> recv ctx Value_without_tls.Code in
+    let rec go = function
+      | [] ->
+        send ctx Value_without_tls.Data () >>= fun () ->
+        recv ctx Value_without_tls.TP_354 >>= fun _txts ->
+        return ()
+      | x :: r ->
+        send ctx Value_without_tls.Rcpt_to (x, []) >>= fun () ->
+        recv ctx Value_without_tls.PP_250 >>= fun _txts ->
+        go r in
+    match code with
+    | 250 -> go recipients
+    | 530 -> properly_quit_and_fail ctx (`Protocol (`Authentication_required))
+    | _ -> fail (`Protocol (`Unexpected_response (code, txts)))
 
 let m1 ctx =
   let open Monad in
