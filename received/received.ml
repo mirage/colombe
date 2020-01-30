@@ -1,6 +1,14 @@
 open Colombe
 open Mrmime
 
+module Option = struct
+  type 'a t = 'a option
+
+  let map f = function
+    | Some x -> Some (f x)
+    | None -> None
+end
+
 type 'a stream = unit -> 'a option
 type protocol = [ `ESMTP | `SMTP | `Atom of string ]
 type link = [ `TCP | `Atom of string ]
