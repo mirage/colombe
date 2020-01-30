@@ -34,7 +34,7 @@ let msg_id t =
     | Some (Only domain) -> Some domain
     | Some (With (domain, _)) -> Some domain
     | None -> None in
-  let domain = Option.map map_domain domain in
+  let domain = Stdlib.Option.map map_domain domain in
   match t.id, domain with
   | Some (`Local local), Some domain -> Some (local, domain)
   | Some (`Atom atom), Some domain -> Some ([ `Atom atom ], domain)
