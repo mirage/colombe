@@ -24,6 +24,7 @@ depends: [
   "fmt"
   "logs"
   "rresult"
+  "mrmime"
   "emile" {>= "0.7"}
   "domain-name" {>= "0.2.1"}
   "alcotest" {with-test}
