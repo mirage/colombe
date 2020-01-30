@@ -21,7 +21,6 @@ depends: [
   "angstrom"
   "ipaddr" {>= "2.9.0"}
   "ocaml-syntax-shims"
-  "stdlib-shims"
   "fmt"
   "logs"
   "rresult"
