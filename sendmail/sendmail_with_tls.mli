@@ -71,7 +71,7 @@ type ('a, 's) stream = ('a, 's) Sendmail.stream
 type error =
   [ Decoder.error
   | Decoder.error
-  | `Protocol of Sendmail.error
+  | `Protocol of [ Sendmail.error | `STARTTLS_unavailable ]
   | `Tls_alert of Tls.Packet.alert_type
   | `Tls_failure of Tls.Engine.failure ]
 
