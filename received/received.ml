@@ -2,8 +2,6 @@ open Colombe
 open Mrmime
 
 module Option = struct
-  type 'a t = 'a option
-
   let map f = function
     | Some x -> Some (f x)
     | None -> None
