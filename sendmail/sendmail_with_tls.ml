@@ -34,15 +34,15 @@ module type VALUE = sig
   type 'x send
   type 'x recv
 
-  type error = private [> Decoder.error | Encoder.error ]
+  type error
 
   val pp_error : error Fmt.t
 
-  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, error) t
-  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, error) t
+  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, [> `Error of error ]) t
+  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, [> `Error of error ]) t
 end
 
-module Value_without_tls = struct
+module Value = struct
   type helo = Domain.t
   type mail_from = Reverse_path.t * (string * string option) list
   type rcpt_to = Forward_path.t * (string * string option) list
@@ -54,11 +54,17 @@ module Value_without_tls = struct
   type tp_354 = string list
   type code = int * string list
 
-  type error = [ Sendmail.error | `STARTTLS_unavailable ]
+  type error =
+    [ Request.Encoder.error
+    | Reply.Decoder.error
+    | `Unexpected_response of int * string list ]
 
   let pp_error ppf = function
-    | #Sendmail.error as err -> Sendmail.pp_error ppf err
-    | `STARTTLS_unavailable -> Fmt.pf ppf "STARTTLS unavailable"
+    | #Request.Encoder.error as err -> Request.Encoder.pp_error ppf err
+    | #Reply.Decoder.error as err -> Reply.Decoder.pp_error ppf err
+    | `Unexpected_response (code, txts) ->
+      Fmt.pf ppf "Unexpected response %3d: %a"
+        code Fmt.(Dump.list string) txts
 
   type 'x send =
     | Helo : helo send
@@ -85,7 +91,7 @@ module Value_without_tls = struct
     | TP_354 -> Fmt.pf ppf "TP-354"
     | Code -> Fmt.pf ppf "<code>"
 
-  let encode_without_tls
+  let encode
     : type a. Encoder.encoder -> a send -> a -> (unit, [> Encoder.error ]) t
     = fun encoder w v ->
       let fiber : a send -> [> Encoder.error ] Encoder.state = function
@@ -108,7 +114,7 @@ module Value_without_tls = struct
         | Encoder.Error err -> Error err in
       (go <.> fiber) w
 
-  let decode_without_tls
+  let decode
     : type a. Decoder.decoder -> a recv -> (a, [> Decoder.error ]) t
     = fun decoder w ->
       let k : Reply.t -> (a, [> Decoder.error ]) t = fun v ->
@@ -134,41 +140,59 @@ module Value_without_tls = struct
       go (Reply.Decoder.response decoder)
 end
 
+module Value_without_tls = struct
+  include Value
+
+  let encode_without_tls ctx w v =
+    let rec go = function
+      | Error err -> Error (`Error err)
+      | Read { k; buffer; off; len; } -> Read { k= go <.> k; buffer; off; len; }
+      | Write { k; buffer; off; len; } -> Write { k= go <.> k; buffer; off; len; }
+      | Return v -> Return v in
+    go (encode ctx w v)
+
+  let decode_without_tls ctx w =
+    let rec go = function
+      | Error err -> Error (`Error err)
+      | Read { k; buffer; off; len; } -> Read { k= go <.> k; buffer; off; len; }
+      | Write { k; buffer; off; len; } -> Write { k= go <.> k; buffer; off; len; }
+      | Return v -> Return v in
+    go (decode ctx w)
+end
+
 module type S = sig
   type 'x send
   type 'x recv
 
-  type error
+  module Value : sig type error end
+
+  type error =
+    [ `Error of Value.error
+    | `Tls_alert of Tls.Packet.alert_type
+    | `Tls_failure of Tls.Engine.failure ]
 
   val pp_error : error Fmt.t
 
   type encoder
   type decoder
 
-  val starttls_as_client : encoder -> Tls.Config.client -> (unit, error) State.t
-  val starttls_as_server : decoder -> Tls.Config.server -> (unit, error) State.t
-  val close : encoder -> (unit, error) State.t
+  val starttls_as_client : encoder -> Tls.Config.client -> (unit, [> error ]) State.t
+  val starttls_as_server : decoder -> Tls.Config.server -> (unit, [> error ]) State.t
+  val close : encoder -> (unit, [> error ]) State.t
 
-  val encode : encoder -> 'a send -> 'a -> (unit, error) State.t
-  val decode : decoder -> 'a recv -> ('a, error) State.t
+  val encode : encoder -> 'a send -> 'a -> (unit, [> error ]) State.t
+  val decode : decoder -> 'a recv -> ('a, [> error ]) State.t
 end
 
 module Make_with_tls (Value : VALUE)
   : S with type 'x send = 'x Value.send
        and type 'x recv = 'x Value.recv
-       and type error =
-             [ Encoder.error
-             | Decoder.error
-             | `Protocol of Value.error
-             | `Tls_alert of Tls.Packet.alert_type
-             | `Tls_failure of Tls.Engine.failure ]
        and type encoder = Context_with_tls.encoder
        and type decoder = Context_with_tls.decoder
+       and type Value.error = Value.error
 = struct
   type error =
-    [ Encoder.error
-    | Decoder.error
-    | `Protocol of Value.error
+    [ `Error of Value.error
     | `Tls_alert of Tls.Packet.alert_type
     | `Tls_failure of Tls.Engine.failure ]
 
@@ -176,9 +200,7 @@ module Make_with_tls (Value : VALUE)
   type decoder = Context_with_tls.t
 
   let pp_error ppf = function
-    | #Encoder.error as x -> Encoder.pp_error ppf x
-    | #Decoder.error as x -> Decoder.pp_error ppf x
-    | `Protocol v -> Value.pp_error ppf v
+    | `Error v -> Value.pp_error ppf v
     | `Tls_alert alert -> Fmt.pf ppf "TLS alert: %s" (Tls.Packet.alert_type_to_string alert)
     | `Tls_failure err -> Fmt.pf ppf "TLS failure: %s" (Tls.Packet.alert_type_to_string (Tls.Engine.alert_of_failure err))
 
@@ -377,18 +399,16 @@ module Make_with_tls (Value : VALUE)
     | None -> Return ()
 
   let encode
-    : type a. encoder -> a send -> a -> (unit, [> Encoder.error ]) t
+    : type a. encoder -> a send -> a -> (unit, [> error ]) t
     = fun ctx w v ->
       let fiber = Value.encode_without_tls ctx.Context_with_tls.context.Context.encoder w v in
-      let fiber = reword_error (fun p -> `Protocol p) fiber in
       go_with_tls ctx fiber Cstruct.empty
 
   let decode
-    : type a. decoder -> a recv -> (a, [> Decoder.error ]) t
+    : type a. decoder -> a recv -> (a, [> error ]) t
     = fun ctx w ->
       let decoder = ctx.Context_with_tls.context.Context.decoder in
       let fiber = Value.decode_without_tls decoder w in
-      let fiber = reword_error (fun p -> `Protocol p) fiber in
 
       (* XXX(dinosaure): [decoder] can already contains something.
          TODO(dinosaure): [?relax] as an argument? *)
@@ -396,14 +416,16 @@ module Make_with_tls (Value : VALUE)
       if Decoder.at_least_one_line ~relax:true decoder
       then fiber
       else go_with_tls ctx fiber Cstruct.empty
+
+  module Value = struct type error = Value.error end
 end
 
-module Value = Make_with_tls(Value_without_tls)
-module Monad = State.Scheduler(Context_with_tls)(Value)
+module Value_with_tls = Make_with_tls(Value_without_tls)
+module Monad = State.Scheduler(Context_with_tls)(Value_with_tls)
 
 let properly_quit_and_fail ctx err =
   let open Monad in
-  let* _txts = send ctx Value_without_tls.Quit () >>= fun () -> recv ctx Value_without_tls.PP_221 in
+  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
   fail err
 
 let auth ctx mechanism info =
@@ -413,26 +435,26 @@ let auth ctx mechanism info =
   | Some (username, password) ->
     match mechanism with
     | Sendmail.PLAIN ->
-      let* code, txts = send ctx Value_without_tls.Auth mechanism >>= fun () -> recv ctx Value_without_tls.Code in
+      let* code, txts = send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code in
       match code with
-      | 504 -> properly_quit_and_fail ctx (`Protocol `Unsupported_mechanism)
-      | 538 -> properly_quit_and_fail ctx (`Protocol `Encryption_required)
-      | 534 -> properly_quit_and_fail ctx (`Protocol `Weak_mechanism)
+      | 504 -> properly_quit_and_fail ctx `Unsupported_mechanism
+      | 538 -> properly_quit_and_fail ctx `Encryption_required
+      | 534 -> properly_quit_and_fail ctx `Weak_mechanism
       | 334 ->
         let* () = match txts with
           | [] ->
             let payload = Base64.encode_exn (Fmt.strf "\000%s\000%s" username password) in
-            send ctx Value_without_tls.Payload payload
+            send ctx Value.Payload payload
           | x :: _ ->
             let x = Base64.decode_exn x in
             let payload = Base64.encode_exn (Fmt.strf "%s\000%s\000%s" x username password) in
-            send ctx Value_without_tls.Payload payload in
-        ( recv ctx Value_without_tls.Code >>= function
+            send ctx Value.Payload payload in
+        ( recv ctx Value.Code >>= function
             | (235, _txts) -> return `Authenticated
-            | (501, _txts) -> properly_quit_and_fail ctx (`Protocol `Authentication_rejected)
-            | (535, _txts) -> properly_quit_and_fail ctx (`Protocol `Authentication_failed)
-            | (code, txts) -> fail (`Protocol (`Unexpected_response (code, txts))) )
-      | code -> fail (`Protocol (`Unexpected_response (code, txts)))
+            | (501, _txts) -> properly_quit_and_fail ctx `Authentication_rejected
+            | (535, _txts) -> properly_quit_and_fail ctx `Authentication_failed
+            | (code, txts) -> fail (`Error (`Error (`Unexpected_response (code, txts)))) )
+      | code -> fail (`Error (`Error (`Unexpected_response (code, txts))))
 
 type domain = Sendmail.domain
 type reverse_path = Sendmail.reverse_path
@@ -441,9 +463,31 @@ type authentication = Sendmail.authentication
 type mechanism = Sendmail.mechanism
 type ('a, 's) stream = unit -> ('a option, 's) io
 
-type error = Value.error
+type error =
+  [ `Error of [ `Error of Value.error
+              | `Tls_alert of Tls.Packet.alert_type
+              | `Tls_failure of Tls.Engine.failure ]
+  | `Unsupported_mechanism
+  | `Encryption_required
+  | `Weak_mechanism
+  | `Authentication_rejected
+  | `Authentication_failed
+  | `Authentication_required
+  | `STARTTLS_unavailable ]
 
-let pp_error = Value.pp_error
+let pp_error ppf = function
+  | `Error (`Error err) -> Value.pp_error ppf err
+  | `Error err -> Value_with_tls.pp_error ppf err
+  | `Unsupported_mechanism ->
+    Fmt.pf ppf "Unsupported mechanism"
+  | `Encryption_required ->
+    Fmt.pf ppf "Encryption required"
+  | `Weak_mechanism ->
+    Fmt.pf ppf "Weak mechanism"
+  | `Authentication_rejected -> Fmt.pf ppf "Authentication rejected"
+  | `Authentication_failed -> Fmt.pf ppf "Authentication failed"
+  | `Authentication_required -> Fmt.pf ppf "Authentication required"
+  | `STARTTLS_unavailable -> Fmt.pf ppf "STARTTLS unavailable"
 
 let has_8bit_mime_transport_extension =
   List.exists ((=) "8BITMIME")
@@ -454,18 +498,20 @@ let has_starttls =
 (* XXX(dinosaure): [m0] IS [Sendmail.m0] + [STARTTLS], we should functorize it over
    a common interface. *)
 
+let error err = `Error err
+
 let m0 ctx config ?authentication ~domain sender recipients =
   let open Monad in
-  recv ctx Value_without_tls.PP_220 >>= fun _txts ->
-  let* txts = send ctx Value_without_tls.Helo domain >>= fun () -> recv ctx Value_without_tls.PP_250 in
+  recv ctx Value.PP_220 >>= fun _txts ->
+  let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
   let has_starttls = has_starttls txts in
 
   if not has_starttls
-  then fail (`Protocol `STARTTLS_unavailable)
+  then fail `STARTTLS_unavailable
   else
-    let* _txts = send ctx Value_without_tls.Starttls () >>= fun () -> recv ctx Value_without_tls.PP_220 in
-    let* () = Value.starttls_as_client ctx config in
-    let* txts = send ctx Value_without_tls.Helo domain >>= fun () -> recv ctx Value_without_tls.PP_250 in
+    let* _txts = send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220 in
+    Value_with_tls.starttls_as_client ctx config |> (reword_error error) >>= fun () ->
+    let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
     let has_8bit_mime_transport_extension = has_8bit_mime_transport_extension txts in
     ( match authentication with
       | Some a -> auth ctx a.Sendmail.mechanism (Some (a.Sendmail.username, a.Sendmail.password))
@@ -474,25 +520,25 @@ let m0 ctx config ?authentication ~domain sender recipients =
       if has_8bit_mime_transport_extension
       then [ "BODY", Some "8BITMIME" ]
       else [] in
-    let* code, txts = send ctx Value_without_tls.Mail_from (sender, parameters) >>= fun () -> recv ctx Value_without_tls.Code in
+    let* code, txts = send ctx Value.Mail_from (sender, parameters) >>= fun () -> recv ctx Value.Code in
     let rec go = function
       | [] ->
-        send ctx Value_without_tls.Data () >>= fun () ->
-        recv ctx Value_without_tls.TP_354 >>= fun _txts ->
+        send ctx Value.Data () >>= fun () ->
+        recv ctx Value.TP_354 >>= fun _txts ->
         return ()
       | x :: r ->
-        send ctx Value_without_tls.Rcpt_to (x, []) >>= fun () ->
-        recv ctx Value_without_tls.PP_250 >>= fun _txts ->
+        send ctx Value.Rcpt_to (x, []) >>= fun () ->
+        recv ctx Value.PP_250 >>= fun _txts ->
         go r in
     match code with
     | 250 -> go recipients
-    | 530 -> properly_quit_and_fail ctx (`Protocol (`Authentication_required))
-    | _ -> fail (`Protocol (`Unexpected_response (code, txts)))
+    | 530 -> properly_quit_and_fail ctx `Authentication_required
+    | _ -> fail (`Error (`Error (`Unexpected_response (code, txts))))
 
 let m1 ctx =
   let open Monad in
-  let* _txts = send ctx Value_without_tls.Dot () >>= fun () -> recv ctx Value_without_tls.PP_250 in
-  let* _txts = send ctx Value_without_tls.Quit () >>= fun () -> recv ctx Value_without_tls.PP_221 in
+  let* _txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.PP_250 in
+  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
   return ()
 
 let run
