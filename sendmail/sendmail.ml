@@ -17,31 +17,16 @@ module Value = struct
   type code = int * string list
 
   type error =
-    [ Request.Decoder.error
+    [ Request.Encoder.error
     | Reply.Decoder.error
-    | `Unexpected_response of (int * string list)
-    | `Unsupported_mechanism
-    | `Encryption_required
-    | `Weak_mechanism
-    | `Authentication_rejected
-    | `Authentication_failed
-    | `Authentication_required ]
+    | `Unexpected_response of (int * string list) ]
 
   let pp_error ppf = function
-    | #Request.Decoder.error as err -> Request.Decoder.pp_error ppf err
+    | #Request.Encoder.error as err -> Request.Encoder.pp_error ppf err
     | #Reply.Decoder.error as err -> Reply.Decoder.pp_error ppf err
     | `Unexpected_response (code, txts) ->
       Fmt.pf ppf "Unexpected response %3d: %a"
         code Fmt.(Dump.list string) txts
-    | `Unsupported_mechanism ->
-      Fmt.pf ppf "Unsupported mechanism"
-    | `Encryption_required ->
-      Fmt.pf ppf "Encryption required"
-    | `Weak_mechanism ->
-      Fmt.pf ppf "Weak mechanism"
-    | `Authentication_rejected -> Fmt.pf ppf "Authentication rejected"
-    | `Authentication_failed -> Fmt.pf ppf "Authentication failed"
-    | `Authentication_required -> Fmt.pf ppf "Authentication required"
 
   type encoder = Encoder.encoder
   type decoder = Decoder.decoder
@@ -141,8 +126,8 @@ let auth ctx mechanism info =
             | (235, _txts) -> return `Authenticated
             | (501, _txts) -> properly_quit_and_fail ctx `Authentication_rejected
             | (535, _txts) -> properly_quit_and_fail ctx `Authentication_failed
-            | (code, txts) -> fail (`Unexpected_response (code, txts)) )
-      | code -> fail (`Unexpected_response (code, txts))
+            | (code, txts) -> fail (`Error (`Unexpected_response (code, txts))) )
+      | code -> fail (`Error (`Unexpected_response (code, txts)))
 
 type domain = Domain.t
 type reverse_path = Reverse_path.t
@@ -156,9 +141,26 @@ type authentication =
 type mechanism = Value.auth = PLAIN
 type ('a, 's) stream = unit -> ('a option, 's) io
 
-type error = Value.error
+type error =
+  [ `Error of Value.error
+  | `Unsupported_mechanism
+  | `Encryption_required
+  | `Weak_mechanism
+  | `Authentication_rejected
+  | `Authentication_failed
+  | `Authentication_required ]
 
-let pp_error = Value.pp_error
+let pp_error ppf = function
+  | `Error err -> Value.pp_error ppf err
+  | `Unsupported_mechanism ->
+    Fmt.pf ppf "Unsupported mechanism"
+  | `Encryption_required ->
+    Fmt.pf ppf "Encryption required"
+  | `Weak_mechanism ->
+    Fmt.pf ppf "Weak mechanism"
+  | `Authentication_rejected -> Fmt.pf ppf "Authentication rejected"
+  | `Authentication_failed -> Fmt.pf ppf "Authentication failed"
+  | `Authentication_required -> Fmt.pf ppf "Authentication required"
 
 let has_8bit_mime_transport_extension =
   List.exists ((=) "8BITMIME")
@@ -194,7 +196,7 @@ let m0 ctx ?authentication ~domain sender recipients =
   match code with
   | 250 -> go recipients
   | 530 -> properly_quit_and_fail ctx `Authentication_required
-  | _ -> fail (`Unexpected_response (code, txts))
+  | _ -> fail (`Error (`Unexpected_response (code, txts)))
 
 let m1 ctx =
   let open Monad in

@@ -68,21 +68,24 @@ end
 
 module Scheduler
     (Context : C)
-    (Value : S with type encoder = Context.encoder and type decoder = Context.decoder)
+    (Value : S with type encoder = Context.encoder
+                and type decoder = Context.decoder)
 = struct
+  type error = [ `Error of Value.error ]
+
   let rec go ~f m len = match m len with
     | Return v -> f v
     | Read { k; off; len; buffer; } ->
       Read { k= go ~f k; off; len; buffer; }
     | Write { k; off; len; buffer; } ->
       Write { k= go ~f k; off; len; buffer; }
-    | Error _ as err -> err
+    | Error err -> Error err
 
   let bind
     : ('a, 'err) t -> f:('a -> ('b, 'err) t) -> ('b, 'err) t
     = fun m ~f -> match m with
     | Return v -> f v
-    | Error _ as err -> err
+    | Error err -> Error err
     | Read { k; off; len; buffer; } ->
       Read { k= go ~f k; off; len; buffer; }
     | Write { k; off; len; buffer; } ->
@@ -92,7 +95,7 @@ module Scheduler
   let ( >>= ) m f = bind m ~f
 
   let encode
-    : type a. Context.t -> a Value.send -> a -> (Context.t -> ('b, Value.error) t) -> ('b, Value.error) t
+    : type a. Context.t -> a Value.send -> a -> (Context.t -> ('b, [> error ]) t) -> ('b, [> error ]) t
     = fun ctx w v k ->
       let rec go = function
         | Return () -> k ctx
@@ -100,26 +103,36 @@ module Scheduler
           Write { k= go <.> k; buffer; off; len; }
         | Read { k; buffer; off; len; } ->
           Read { k= go <.> k; buffer; off; len; }
-        | Error _ as err -> err in
+        | Error err -> Error (`Error err) in
       go (Value.encode (Context.encoder ctx) w v)
 
-  let send : type a. Context.t -> a Value.send -> a -> (unit, Value.error) t
+  let send : type a. Context.t -> a Value.send -> a -> (unit, [> error ]) t
     = fun ctx w x -> encode ctx w x (fun _ctx -> Return ())
 
   let decode
-    : type a. Context.t -> a Value.recv -> (Context.t -> a -> ('b, Value.error) t) -> ('b, Value.error) t
+    : type a. Context.t -> a Value.recv -> (Context.t -> a -> ('b, [> error ]) t) -> ('b, [> error ]) t
     = fun ctx w k ->
-      let rec go : (a, 'err) t -> ('b, Value.error) t = function
+      let rec go : (a, 'err) t -> ('b, [> error ]) t = function
         | Read { k; buffer; off; len; } ->
           Read { k= go <.> k; buffer; off; len; }
         | Write { k; buffer; off; len; } ->
           Write { k= go <.> k; buffer; off; len; }
         | Return v -> k ctx v
-        | Error _ as err -> err in
+        | Error err -> Error (`Error err) in
       go (Value.decode (Context.decoder ctx) w)
 
-  let recv : type a. Context.t -> a Value.recv -> (a, Value.error) t
+  let recv : type a. Context.t -> a Value.recv -> (a, [> error ]) t
     = fun ctx w -> decode ctx w (fun _ctx v -> Return v)
+
+  let reword_error f x =
+    let rec go = function
+      | Read { k; buffer; off; len; } ->
+        Read { k= go <.> k; buffer; off; len; }
+      | Write { k; buffer; off; len; } ->
+        Write { k= go <.> k; buffer; off; len; }
+      | Return v -> Return v
+      | Error err -> Error (f err) in
+    go x
 
   let return v = Return v
   let fail error = Error error
