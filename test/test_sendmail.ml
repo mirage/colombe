@@ -251,7 +251,7 @@ let test_6 () =
       [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
       (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
-  | Error (`Unexpected_response (550, _)) -> is_empty ()
+  | Error (`Error (`Unexpected_response (550, _))) -> is_empty ()
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> Fmt.failwith "Unexpected valid result"
 

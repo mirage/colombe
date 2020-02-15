@@ -289,7 +289,7 @@ let test_replies_1 () =
 
 let () =
   Alcotest.run "colombe"
-    [ "requests", test_requests_0 ()
-    ; "requests", test_requests_1 ()
-    ; "replies", test_replies_0 ()
-    ; "replies", test_replies_1 () ]
+    [ "requests 0", test_requests_0 ()
+    ; "requests 1", test_requests_1 ()
+    ; "replies 0", test_replies_0 ()
+    ; "replies 1", test_replies_1 () ]

@@ -16,9 +16,9 @@ type authentication =
 type ('a, 's) stream = unit -> ('a option, 's) io
 
 type error =
-  [ Request.Decoder.error
-  | Reply.Decoder.error
-  | `Unexpected_response of int * string list
+  [ `Error of [ Request.Encoder.error
+              | Reply.Decoder.error
+              | `Unexpected_response of int * string list ]
   | `Unsupported_mechanism
   | `Encryption_required
   | `Weak_mechanism
