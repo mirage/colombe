@@ -45,18 +45,18 @@ module type C = sig
 end
 
 module Scheduler (Context : C) (Value : S with type encoder = Context.encoder and type decoder = Context.decoder) : sig
-  type error = [ `Error of Value.error ]
+  type error = Value.error
 
   val bind : ('a, 'err) t -> f:('a -> ('b, 'err) t) -> ('b, 'err) t
 
   val ( let* ) : ('a, 'err) t -> ('a -> ('b, 'err) t) -> ('b, 'err) t
   val ( >>= ) : ('a, 'err) t -> ('a -> ('b, 'err) t) -> ('b, 'err) t
 
-  val encode : Context.t -> 'a Value.send -> 'a -> (Context.t -> ('b, [> error ] as 'err) t) -> ('b, 'err) t
-  val decode : Context.t -> 'a Value.recv -> (Context.t -> 'a -> ('b, [> error ] as 'err) t) -> ('b, 'err) t
+  val encode : Context.t -> 'a Value.send -> 'a -> (Context.t -> ('b, [> `Protocol of error ] as 'err) t) -> ('b, 'err) t
+  val decode : Context.t -> 'a Value.recv -> (Context.t -> 'a -> ('b, [> `Protocol of error ] as 'err) t) -> ('b, 'err) t
 
-  val send : Context.t -> 'a Value.send -> 'a -> (unit, [> error ]) t
-  val recv : Context.t -> 'a Value.recv -> ('a, [> error ]) t
+  val send : Context.t -> 'a Value.send -> 'a -> (unit, [> `Protocol of error ]) t
+  val recv : Context.t -> 'a Value.recv -> ('a, [> `Protocol of error ]) t
 
   val return : 'v -> ('v, 'err) t
   val fail : 'err -> ('v, 'err) t

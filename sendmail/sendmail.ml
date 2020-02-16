@@ -126,8 +126,8 @@ let auth ctx mechanism info =
             | (235, _txts) -> return `Authenticated
             | (501, _txts) -> properly_quit_and_fail ctx `Authentication_rejected
             | (535, _txts) -> properly_quit_and_fail ctx `Authentication_failed
-            | (code, txts) -> fail (`Error (`Unexpected_response (code, txts))) )
-      | code -> fail (`Error (`Unexpected_response (code, txts)))
+            | (code, txts) -> fail (`Protocol (`Unexpected_response (code, txts))) )
+      | code -> fail (`Protocol (`Unexpected_response (code, txts)))
 
 type domain = Domain.t
 type reverse_path = Reverse_path.t
@@ -142,7 +142,7 @@ type mechanism = Value.auth = PLAIN
 type ('a, 's) stream = unit -> ('a option, 's) io
 
 type error =
-  [ `Error of Value.error
+  [ `Protocol of Value.error
   | `Unsupported_mechanism
   | `Encryption_required
   | `Weak_mechanism
@@ -151,7 +151,7 @@ type error =
   | `Authentication_required ]
 
 let pp_error ppf = function
-  | `Error err -> Value.pp_error ppf err
+  | `Protocol err -> Value.pp_error ppf err
   | `Unsupported_mechanism ->
     Fmt.pf ppf "Unsupported mechanism"
   | `Encryption_required ->
@@ -196,7 +196,7 @@ let m0 ctx ?authentication ~domain sender recipients =
   match code with
   | 250 -> go recipients
   | 530 -> properly_quit_and_fail ctx `Authentication_required
-  | _ -> fail (`Error (`Unexpected_response (code, txts)))
+  | _ -> fail (`Protocol (`Unexpected_response (code, txts)))
 
 let m1 ctx =
   let open Monad in

@@ -38,8 +38,8 @@ module type VALUE = sig
 
   val pp_error : error Fmt.t
 
-  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, [> `Error of error ]) t
-  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, [> `Error of error ]) t
+  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, [> `Protocol of error ]) t
+  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, [> `Protocol of error ]) t
 end
 
 module Value = struct
@@ -145,7 +145,7 @@ module Value_without_tls = struct
 
   let encode_without_tls ctx w v =
     let rec go = function
-      | Error err -> Error (`Error err)
+      | Error err -> Error (`Protocol err)
       | Read { k; buffer; off; len; } -> Read { k= go <.> k; buffer; off; len; }
       | Write { k; buffer; off; len; } -> Write { k= go <.> k; buffer; off; len; }
       | Return v -> Return v in
@@ -153,7 +153,7 @@ module Value_without_tls = struct
 
   let decode_without_tls ctx w =
     let rec go = function
-      | Error err -> Error (`Error err)
+      | Error err -> Error (`Protocol err)
       | Read { k; buffer; off; len; } -> Read { k= go <.> k; buffer; off; len; }
       | Write { k; buffer; off; len; } -> Write { k= go <.> k; buffer; off; len; }
       | Return v -> Return v in
@@ -167,7 +167,7 @@ module type S = sig
   module Value : sig type error end
 
   type error =
-    [ `Error of Value.error
+    [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
     | `Tls_failure of Tls.Engine.failure ]
 
@@ -192,7 +192,7 @@ module Make_with_tls (Value : VALUE)
        and type Value.error = Value.error
 = struct
   type error =
-    [ `Error of Value.error
+    [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
     | `Tls_failure of Tls.Engine.failure ]
 
@@ -200,7 +200,7 @@ module Make_with_tls (Value : VALUE)
   type decoder = Context_with_tls.t
 
   let pp_error ppf = function
-    | `Error v -> Value.pp_error ppf v
+    | `Protocol v -> Value.pp_error ppf v
     | `Tls_alert alert -> Fmt.pf ppf "TLS alert: %s" (Tls.Packet.alert_type_to_string alert)
     | `Tls_failure err -> Fmt.pf ppf "TLS failure: %s" (Tls.Packet.alert_type_to_string (Tls.Engine.alert_of_failure err))
 
@@ -426,7 +426,7 @@ module Monad = State.Scheduler(Context_with_tls)(Value_with_tls)
 let properly_quit_and_fail ctx err =
   let open Monad in
   let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-  fail err
+  Error err
 
 let auth ctx mechanism info =
   let open Monad in
@@ -453,8 +453,8 @@ let auth ctx mechanism info =
             | (235, _txts) -> return `Authenticated
             | (501, _txts) -> properly_quit_and_fail ctx `Authentication_rejected
             | (535, _txts) -> properly_quit_and_fail ctx `Authentication_failed
-            | (code, txts) -> fail (`Error (`Error (`Unexpected_response (code, txts)))) )
-      | code -> fail (`Error (`Error (`Unexpected_response (code, txts))))
+            | (code, txts) -> Error (`Tls (`Protocol (`Unexpected_response (code, txts)))) )
+      | code -> Error (`Tls (`Protocol (`Unexpected_response (code, txts))))
 
 type domain = Sendmail.domain
 type reverse_path = Sendmail.reverse_path
@@ -464,9 +464,12 @@ type mechanism = Sendmail.mechanism
 type ('a, 's) stream = unit -> ('a option, 's) io
 
 type error =
-  [ `Error of [ `Error of Value.error
-              | `Tls_alert of Tls.Packet.alert_type
-              | `Tls_failure of Tls.Engine.failure ]
+  [ `Tls of [ `Protocol of Value.error
+            | `Tls_alert of Tls.Packet.alert_type
+            | `Tls_failure of Tls.Engine.failure ]
+  | `Protocol of [ `Protocol of Value.error
+                 | `Tls_alert of Tls.Packet.alert_type
+                 | `Tls_failure of Tls.Engine.failure ]
   | `Unsupported_mechanism
   | `Encryption_required
   | `Weak_mechanism
@@ -476,8 +479,8 @@ type error =
   | `STARTTLS_unavailable ]
 
 let pp_error ppf = function
-  | `Error (`Error err) -> Value.pp_error ppf err
-  | `Error err -> Value_with_tls.pp_error ppf err
+  | `Protocol err
+  | `Tls err -> Value_with_tls.pp_error ppf err
   | `Unsupported_mechanism ->
     Fmt.pf ppf "Unsupported mechanism"
   | `Encryption_required ->
@@ -498,8 +501,6 @@ let has_starttls =
 (* XXX(dinosaure): [m0] IS [Sendmail.m0] + [STARTTLS], we should functorize it over
    a common interface. *)
 
-let error err = `Error err
-
 let m0 ctx config ?authentication ~domain sender recipients =
   let open Monad in
   recv ctx Value.PP_220 >>= fun _txts ->
@@ -507,10 +508,10 @@ let m0 ctx config ?authentication ~domain sender recipients =
   let has_starttls = has_starttls txts in
 
   if not has_starttls
-  then fail `STARTTLS_unavailable
+  then Error `STARTTLS_unavailable
   else
     let* _txts = send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220 in
-    Value_with_tls.starttls_as_client ctx config |> (reword_error error) >>= fun () ->
+    Value_with_tls.starttls_as_client ctx config |> (reword_error (fun err -> `Tls err)) >>= fun () ->
     let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
     let has_8bit_mime_transport_extension = has_8bit_mime_transport_extension txts in
     ( match authentication with
@@ -533,7 +534,7 @@ let m0 ctx config ?authentication ~domain sender recipients =
     match code with
     | 250 -> go recipients
     | 530 -> properly_quit_and_fail ctx `Authentication_required
-    | _ -> fail (`Error (`Error (`Unexpected_response (code, txts))))
+    | _ -> Error (`Tls (`Protocol (`Unexpected_response (code, txts))))
 
 let m1 ctx =
   let open Monad in
@@ -580,7 +581,7 @@ let sendmail { bind; return } rdwr flow ctx mail =
         | None -> go state in
     go state >>= fun state -> ctx.tls <- Some state ; return ()
 
-let sendmail ({ bind; return; } as impl) rdwr flow context config ?authentication ~domain sender recipients mail =
+let sendmail ({ bind; return; } as impl) rdwr flow context config ?authentication ~domain sender recipients mail : ((unit, error) result, 's) io =
   let ( >>- ) = bind in
   let ( >>= ) x f = x >>- function
     | Ok v -> f v
@@ -590,4 +591,5 @@ let sendmail ({ bind; return; } as impl) rdwr flow context config ?authenticatio
   run impl rdwr flow m0 >>= fun () ->
   (* assert that context is empty. *)
   sendmail impl rdwr flow context mail >>- fun () ->
-  let m1 = m1 context in run impl rdwr flow m1
+  let m1 = m1 context in
+  run impl rdwr flow m1
