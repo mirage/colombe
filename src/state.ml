@@ -71,7 +71,7 @@ module Scheduler
     (Value : S with type encoder = Context.encoder
                 and type decoder = Context.decoder)
 = struct
-  type error = [ `Error of Value.error ]
+  type error = Value.error
 
   let rec go ~f m len = match m len with
     | Return v -> f v
@@ -95,7 +95,7 @@ module Scheduler
   let ( >>= ) m f = bind m ~f
 
   let encode
-    : type a. Context.t -> a Value.send -> a -> (Context.t -> ('b, [> error ]) t) -> ('b, [> error ]) t
+    : type a. Context.t -> a Value.send -> a -> (Context.t -> ('b, [> `Protocol of error ]) t) -> ('b, [> `Protocol of error ]) t
     = fun ctx w v k ->
       let rec go = function
         | Return () -> k ctx
@@ -103,25 +103,25 @@ module Scheduler
           Write { k= go <.> k; buffer; off; len; }
         | Read { k; buffer; off; len; } ->
           Read { k= go <.> k; buffer; off; len; }
-        | Error err -> Error (`Error err) in
+        | Error err -> Error (`Protocol err) in
       go (Value.encode (Context.encoder ctx) w v)
 
-  let send : type a. Context.t -> a Value.send -> a -> (unit, [> error ]) t
+  let send : type a. Context.t -> a Value.send -> a -> (unit, [> `Protocol of error ]) t
     = fun ctx w x -> encode ctx w x (fun _ctx -> Return ())
 
   let decode
-    : type a. Context.t -> a Value.recv -> (Context.t -> a -> ('b, [> error ]) t) -> ('b, [> error ]) t
+    : type a. Context.t -> a Value.recv -> (Context.t -> a -> ('b, [> `Protocol of error ]) t) -> ('b, [> `Protocol of error ]) t
     = fun ctx w k ->
-      let rec go : (a, 'err) t -> ('b, [> error ]) t = function
+      let rec go : (a, 'err) t -> ('b, [> `Protocol of error ]) t = function
         | Read { k; buffer; off; len; } ->
           Read { k= go <.> k; buffer; off; len; }
         | Write { k; buffer; off; len; } ->
           Write { k= go <.> k; buffer; off; len; }
         | Return v -> k ctx v
-        | Error err -> Error (`Error err) in
+        | Error err -> Error (`Protocol err) in
       go (Value.decode (Context.decoder ctx) w)
 
-  let recv : type a. Context.t -> a Value.recv -> (a, [> error ]) t
+  let recv : type a. Context.t -> a Value.recv -> (a, [> `Protocol of error ]) t
     = fun ctx w -> decode ctx w (fun _ctx v -> Return v)
 
   let reword_error f x =
