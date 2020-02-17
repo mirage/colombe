@@ -22,8 +22,8 @@ module type VALUE = sig
 
   val pp_error : error Fmt.t
 
-  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, [> `Error of error ]) State.t
-  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, [> `Error of error ]) State.t
+  val encode_without_tls : Encoder.encoder -> 'x send -> 'x -> (unit, [> `Protocol of error ]) State.t
+  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, [> `Protocol of error ]) State.t
 end
 
 module Value : sig
@@ -40,7 +40,7 @@ module type S = sig
   module Value : sig type error end
 
   type error =
-    [ `Error of Value.error
+    [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
     | `Tls_failure of Tls.Engine.failure ]
 
@@ -76,9 +76,12 @@ type authentication = Sendmail.authentication
 type ('a, 's) stream = ('a, 's) Sendmail.stream
 
 type error =
-  [ `Error of [ `Error of Value.error
-              | `Tls_alert of Tls.Packet.alert_type
-              | `Tls_failure of Tls.Engine.failure ]
+  [ `Tls of [ `Protocol of Value.error
+            | `Tls_alert of Tls.Packet.alert_type
+            | `Tls_failure of Tls.Engine.failure ]
+  | `Protocol of [ `Protocol of Value.error
+                 | `Tls_alert of Tls.Packet.alert_type
+                 | `Tls_failure of Tls.Engine.failure ]
   | `Unsupported_mechanism
   | `Encryption_required
   | `Weak_mechanism
