@@ -43,3 +43,5 @@ let to_forward_path ?route mailbox =
   | _ ->
     to_path ?route mailbox
     >>| fun path -> Colombe.Forward_path.Forward_path path
+
+let to_domain = cast_domain
