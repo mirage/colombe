@@ -19,6 +19,45 @@ let equal a b =
   && Domain.equal a.domain b.domain
   && (try List.for_all2 Domain.equal a.rest b.rest with _ -> false)
 
+let compare_domains a b =
+  let inf = (-1) and sup = 1 in
+  let rec go a b = match a, b with
+    | _ :: _, [] -> sup
+    | [], _ :: _ -> inf
+    | a :: ar, b :: br ->
+      let res = Domain.compare a b in
+      if res = 0 then go ar br else res
+    | [], [] -> 0 in
+  go (List.sort Domain.compare a) (List.sort Domain.compare b)
+
+let compare_local a b =
+  let inf = (-1) and sup = 1 in
+  match a, b with
+  | `Dot_string a, `Dot_string b ->
+    let rec go a b =
+      match a, b with
+      | _ :: _, [] -> sup
+      | [], _ :: _ -> inf
+      | a :: ar, b :: br ->
+        let res = String.compare a b in
+        if res = 0 then go ar br else res
+      | [], [] -> 0 in
+    go a b
+  | `Dot_string a, `String b ->
+    let a = String.concat "." a in
+    String.compare a b
+  | `String a, `Dot_string b ->
+    let b = String.concat "." b in
+    String.compare a b
+  | `String a, `String b ->
+    String.compare a b
+
+let compare a b =
+  let res = compare_domains (a.domain :: a.rest) (b.domain :: b.rest) in
+  if res = 0
+  then compare_local a.local b.local
+  else res
+
 let pp_local ppf = function
   | `String x -> Fmt.(quote string) ppf x
   | `Dot_string l -> Fmt.(list ~sep:(const string ".") string) ppf l

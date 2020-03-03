@@ -14,6 +14,17 @@ let equal a b = match a, b with
   | Forward_path a, Forward_path b -> Path.equal a b
   | _, _ -> false
 
+let compare a b =
+  let inf = (-1) and sup = 1 in
+  match a, b with
+  | Postmaster, Postmaster -> 0
+  | Domain a, Domain b -> Domain.compare a b
+  | Forward_path a, Forward_path b -> Path.compare a b
+  | Postmaster, _ -> sup
+  | (Forward_path _ | Domain _), Postmaster -> inf
+  | Domain _, _ -> sup
+  | Forward_path _, Domain _ -> inf
+
 module Decoder = struct
   open Angstrom
 
