@@ -5,7 +5,7 @@ services:
   - docker
 env:
   global:
-    - PINS="colombe:. sendmail:. sendmail-lwt:. mrmime:https://github.com/mirage/mrmime.git unstrctrd:https://github.com/dinosaure/unstrctrd.git"
+    - PINS="colombe:. sendmail:. sendmail-lwt:. mrmime:https://github.com/mirage/mrmime.git bigarray-overlap:https://github.com/dinosaure/overlap.git"
     - DISTRO="debian-stable"
     - TESTS=true
   matrix:
