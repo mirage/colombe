@@ -41,7 +41,7 @@ let rdwr_from_flows inputs outputs =
   { Colombe.Sigs.rd= read; wr= write; },
   (fun () -> match !inputs, !outputs with
      | [], [] -> ()
-     | r, w -> Fmt.failwith "inputs or ouputs are not empty: @[<hov>%a@] and @[<hov>%a@]"
+     | r, w -> Fmt.failwith "inputs or outputs are not empty: @[<hov>%a@] and @[<hov>%a@]"
                  Fmt.(Dump.list string) r Fmt.(Dump.list string) w)
 
 let test_0 () =
@@ -172,7 +172,7 @@ let test_3 () =
   | Ok _ -> Fmt.failwith "Should fail with [Unsupported_mechanism]"
 
 let test_4 () =
-  Alcotest.test_case "Authentication required" `Quick @@ fun () ->
+  Alcotest.test_case "authentication required" `Quick @@ fun () ->
   let ctx = Colombe.State.Context.make () in
   let rdwr, is_empty =
     rdwr_from_flows
@@ -233,7 +233,7 @@ let test_5 () =
   | Ok _ -> is_empty ()
 
 let test_6 () =
-  Alcotest.test_case "Spam" `Quick @@ fun () ->
+  Alcotest.test_case "spam" `Quick @@ fun () ->
   let ctx = Colombe.State.Context.make () in
   let rdwr, is_empty =
     rdwr_from_flows
