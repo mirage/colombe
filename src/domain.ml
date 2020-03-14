@@ -16,6 +16,8 @@ let equal a b = match a, b with
      with _ -> false)
   | _, _ -> false
 
+let error_msgf fmt = Format.kasprintf (fun err -> Error (`Msg err)) fmt
+
 let compare a b =
   let sup = 1 and inf = (-1) in
   match a, b with
@@ -132,7 +134,7 @@ module Decoder = struct
   let of_string x =
     match parse_string (domain <|> address_literal) x with
     | Ok _ as v -> v
-    | Error _ -> Rresult.R.error_msgf "Invalid domain: %S" x
+    | Error _ -> error_msgf "Invalid domain: %S" x
 end
 
 module Encoder = struct
@@ -163,7 +165,7 @@ let extension k v =
   if String.length k > 0 && satisfy is_ldh k && k.[String.length k - 1] <> '-'
      && String.length v > 0 && satisfy is_dcontent v
   then Ok (Extension (k, v))
-  else Rresult.R.error_msgf "Invalid key:%S or value:%S" k v
+  else error_msgf "Invalid key:%S or value:%S" k v
 
 let is_atext_valid_string _ = true
 
@@ -172,7 +174,7 @@ type atom = string
 let atom x =
   if is_atext_valid_string x
   then Ok x
-  else Rresult.R.error_msgf "atom %S does not respect standards" x
+  else error_msgf "atom %S does not respect standards" x
 
 let atom_exn x =
   match atom x with
@@ -198,8 +200,8 @@ let rec coerce : type a. a Peano.s domain -> string list = function
   | [x] -> [x]
   | x :: y :: r -> List.cons x (coerce (y :: r))
 
-let make_domain : type a. a domain -> (string list, [ `Msg of string ]) result = function
-  | [] -> Rresult.R.error_msg "A domain must contain at least one element"
+let make_domain : type a. a domain -> (string list, [> `Msg of string ]) result = function
+  | [] -> error_msgf "A domain must contain at least one element"
   | x :: r -> Ok (coerce (x :: r))
 
 type 'a w =
@@ -211,10 +213,12 @@ let domain = WDomain
 let ipv4 = WIPv4
 let ipv6 = WIPv6
 
-let make : type a. a w -> a -> (t, [ `Msg of string ]) result =
+let make : type a. a w -> a -> (t, [> `Msg of string ]) result =
   fun witness v ->
   match witness with
-  | WDomain -> Rresult.R.(make_domain v >>| fun v -> Domain v)
+  | WDomain ->
+    let ( >>| ) x f = match x with Ok x -> Ok (f x) | Error err -> Error err in
+    make_domain v >>| fun v -> Domain v
   | WIPv4 -> Ok (IPv4 v)
   | WIPv6 -> Ok (IPv6 v)
 
