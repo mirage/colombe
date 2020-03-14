@@ -6,6 +6,47 @@ module Option = struct
     | _, _ -> false
 end
 
+module String = struct
+  include String
+
+  (* (c) @dbuenzli with love *)
+
+  let add_sub ~no_empty s ~start ~stop acc =
+    if start = stop
+    then ( if no_empty then acc else "" :: acc )
+    else String.sub s start (stop - start) :: acc
+
+  let fcuts ~no_empty ~sep s =
+    let sep_len = String.length sep in
+    if sep_len = 0 then invalid_arg "empty separator" ;
+    let s_len = String.length s in
+    let max_sep_idx = sep_len - 1 in
+    let max_s_idx = s_len - sep_len in
+    let rec check_sep start i k acc =
+      if k > max_sep_idx
+      then
+        let new_start = i + sep_len in
+        scan new_start new_start (add_sub ~no_empty s ~start ~stop:i acc)
+      else
+        if s.[i + k] = sep.[k]
+        then check_sep start i (k + 1) acc
+        else scan start (i + 1) acc
+    and scan start i acc =
+      if i > max_s_idx
+      then
+        if start = 0
+        then ( if no_empty && s_len = 0 then [] else [ s ] )
+        else List.rev (add_sub ~no_empty s ~start ~stop:s_len acc)
+      else
+        if s.[i] = sep.[0]
+        then check_sep start i 1 acc
+        else scan start (i + 1) acc in
+    scan 0 0 []
+
+  let cuts ?(empty= true) ~sep s =
+    fcuts ~no_empty:(not empty) ~sep s
+end
+
 type t =
   [ `Hello of Domain.t
   | `Mail of Reverse_path.t * (string * string option) list
@@ -138,8 +179,8 @@ module Decoder = struct
     let domain =
       try Ok (Domain.of_string_exn domain)
       with _exn -> match Ipaddr.of_string domain with
-        | Ok (Ipaddr.V4 ipv4) -> Rresult.R.ok (Domain.IPv4 ipv4)
-        | Ok (Ipaddr.V6 ipv6) -> Rresult.R.ok (Domain.IPv6 ipv6)
+        | Ok (Ipaddr.V4 ipv4) -> Ok (Domain.IPv4 ipv4)
+        | Ok (Ipaddr.V6 ipv6) -> Ok (Domain.IPv6 ipv6)
         | Error _ -> Error (`Invalid_domain domain) in
     match domain with
     | Ok domain ->
@@ -207,7 +248,7 @@ module Decoder = struct
       | `Verb verb ->
         let raw_eol, off, len = peek_while_eol ?relax decoder in
         let raw = without_eol (raw_eol, off, len) in
-        let v = `Verb (verb, Astring.String.cuts ~sep:" " ~empty:true raw) in
+        let v = `Verb (verb, String.cuts ~sep:" " ~empty:true raw) in
         decoder.pos <- decoder.pos + len ; return v decoder
       | `Payload payload -> return (`Payload payload) decoder
     in command ?relax k decoder

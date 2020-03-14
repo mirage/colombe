@@ -62,5 +62,5 @@ module Scheduler (Context : C) (Value : S with type encoder = Context.encoder an
   val fail : 'err -> ('v, 'err) t
   val reword_error : ('err0 -> 'err1) -> ('v, 'err0) t -> ('v, 'err1) t
 
-  val error_msgf : ('a, Format.formatter, unit, ('b, [> Rresult.R.msg ]) t) format4 -> 'a
+  val error_msgf : ('a, Format.formatter, unit, ('b, [> `Msg of string ]) t) format4 -> 'a
 end
