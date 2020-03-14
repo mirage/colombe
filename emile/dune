@@ -2,4 +2,4 @@
  (name colombe_emile)
  (public_name colombe.emile)
  (optional)
- (libraries colombe emile rresult))
+ (libraries colombe emile))

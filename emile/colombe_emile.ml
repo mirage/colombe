@@ -1,4 +1,5 @@
 let some x = Some x
+let error_msgf fmt = Format.kasprintf (fun err -> Error (`Msg err)) fmt
 
 let concatene local =
   String.concat "." (List.map (function `Atom x -> x | `String x -> x) local)
@@ -8,7 +9,7 @@ let is_string = function
   | `Atom _ -> false
 
 let cast_domain = function
-  | `Literal _ -> Rresult.R.error_msgf "Impossible to make a path with a literal domain"
+  | `Literal _ -> error_msgf "Impossible to make a path with a literal domain"
   | `Domain l -> Ok (Colombe.Domain.Domain l)
   | `Addr (Emile.IPv4 v) -> Ok (Colombe.Domain.IPv4 v)
   | `Addr (Emile.IPv6 v) -> Ok (Colombe.Domain.IPv6 v)
@@ -30,12 +31,12 @@ let to_path ?(route= []) mailbox =
   | Ok domain -> Ok { Colombe.Path.local; domain; rest= route }
   | Error _ as err -> err
 
+let ( >>| ) x f = match x with Ok x -> Ok (f x) | Error err -> Error err
+
 let to_reverse_path ?route mailbox =
-  let open Rresult.R in
   to_path ?route mailbox >>| some
 
 let to_forward_path ?route mailbox =
-  let open Rresult.R in
   match mailbox.Emile.local with
   | [ `Atom "Postmaster" ] ->
     cast_domain (fst mailbox.Emile.domain)
