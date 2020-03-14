@@ -1,5 +1,4 @@
 opam-version: "2.0"
-name:         "colombe"
 license:      "MIT"
 authors:      [ "Gwenaëlle Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
 maintainer:   [ "Gwenaëlle Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
@@ -7,26 +6,21 @@ homepage:     "https://github.com/dinosaure/colombe"
 bug-reports:  "https://github.com/dinosaure/colombe/issues"
 dev-repo:     "git+https://github.com/dinosaure/colombe.git"
 doc:          "https://dinosaure.github.io/colombe/"
-synopsis:     "SMTP protocol in OCaml"
-description: """This package purpose is to provide an implementation of the
-RFC 5321 about SMTP standard in OCaml.
-"""
+synopsis:     "Implementation of the sendmail command."
+description: """A library to be able to send an email."""
 
-build: [ "dune" "build" "-p" name "-j" jobs ]
-run-test: [ "dune" "runtest" "-p" name "-j" jobs ]
-
-pin-depends: [
-  [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
+build: [
+  [ "dune" "build" "-p" name "-j" jobs ]
+  [ "dune" "runtest" "-p" name "-j" jobs ] {with-test}
 ]
 
 depends: [
   "ocaml" {>= "4.03.0"}
-  "dune" {build}
+  "dune"
   "colombe" {= version}
   "tls"
   "base64"
   "logs"
-  "mrmime" {>= "0.1.0" & with-test}
+  "mrmime" {>= "0.2.0" & with-test}
   "alcotest" {with-test}
-  "crowbar" {with-test}
 ]
