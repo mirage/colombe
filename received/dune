@@ -1,4 +1,4 @@
 (library
  (name received)
- (public_name colombe.received)
+ (public_name received)
  (libraries colombe mrmime emile angstrom))
