@@ -16,5 +16,4 @@
   (name sendmail_lwt)
   (public_name sendmail-lwt)
   (modules sendmail_lwt)
-  (libraries sendmail domain-name
-             lwt tls tls.lwt))
+  (libraries sendmail domain-name lwt tls tls.lwt))
