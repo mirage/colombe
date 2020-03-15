@@ -21,6 +21,7 @@ depends: [
   "tls"
   "base64"
   "logs"
+  "emile" {>= "0.8" & with-test}
   "mrmime" {>= "0.2.0" & with-test}
   "alcotest" {with-test}
 ]
