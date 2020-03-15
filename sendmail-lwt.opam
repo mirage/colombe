@@ -1,33 +1,26 @@
 opam-version: "2.0"
-name:         "colombe"
 license:      "MIT"
 authors:      [ "Charles-Edouard Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
 maintainer:   [ "Charles-Edouard Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
-homepage:     "https://github.com/dinosaure/colombe"
-bug-reports:  "https://github.com/dinosaure/colombe/issues"
-dev-repo:     "git+https://github.com/dinosaure/colombe.git"
-doc:          "https://dinosaure.github.io/colombe/"
-synopsis:     "SMTP protocol in OCaml"
-description: """This package purpose is to provide an implementation of the
-RFC 5321 about SMTP standard in OCaml.
-"""
+homepage:     "https://github.com/mirage/colombe"
+bug-reports:  "https://github.com/mirage/colombe/issues"
+dev-repo:     "git+https://github.com/mirage/colombe.git"
+doc:          "https://mirage.github.io/colombe/"
+synopsis:     "Implementation of the sendmail command over LWT."
+description: """A library to be able to send an email with LWT."""
 
-build: [ "dune" "build" "-p" name "-j" jobs ]
-run-test:  [ "dune" "runtest" "-p" name "-j" jobs ]
-
-
-pin-depends: [
-  [ "crowbar.dev" "git+https://github.com/stedolan/crowbar.git" ]
+build: [
+  [ "dune" "build" "-p" name "-j" jobs ]
+  [ "dune" "runtest" "-p" name "-j" jobs ] {with-test}
 ]
 
 depends: [
   "ocaml" {>= "4.03.0"}
-  "dune" {build}
+  "dune"
   "sendmail" {= version}
   "domain-name"
   "lwt"
   "tls"
   "x509" {>= "0.7.0"}
   "alcotest" {with-test}
-  "crowbar" {with-test}
 ]
