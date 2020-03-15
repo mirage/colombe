@@ -6,7 +6,7 @@ homepage:     "https://github.com/mirage/colombe"
 bug-reports:  "https://github.com/mirage/colombe/issues"
 dev-repo:     "git+https://github.com/mirage/colombe.git"
 doc:          "https://mirage.github.io/colombe/"
-synopsis:     "Implementation of the sendmail command over LWT."
+synopsis:     "Implementation of the sendmail command over LWT"
 description: """A library to be able to send an email with LWT."""
 
 build: [
