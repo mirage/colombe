@@ -23,4 +23,5 @@ depends: [
   "ocaml-syntax-shims"
   "alcotest" {with-test}
 ]
-depopts: [ "emile" {>= "0.8"} ]
+depopts: [ "emile" ]
+conflicts: [ "emile" {< "0.8"} ]
