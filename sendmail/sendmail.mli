@@ -35,11 +35,12 @@ val sendmail :
   domain:Domain.t -> reverse_path -> forward_path list ->
   ((string * int * int), 's) stream ->
   ((unit, error) result, 's) io
-(** [sendmail impl rdwr flow ctx ?authentication ~domain sender recipients mail] where:
+(** [sendmail impl rdwr flow ctx ?authentication ~domain sender recipients mail]
+   where:
 
     {ul
     {- [impl] is the scheduler (unix, lwt or async)}
-    {- [rdwr] read/write {i syscall}}
+    {- [rdwr] read/write {i syscalls}}
     {- [flow] witness of the flow (can be a socket)}
     {- [ctx] context used by the process}
     {- [authentication] authentication information used by the process}
@@ -47,5 +48,6 @@ val sendmail :
     {- [recipients] recipients of the mail}
     {- [mail] stream of the mail}}
 
-    This process try to send a mail according [RFC4409]. The process should be wrapped into
-    a secured flow (like TLS). *)
+    This process try to send a mail according [RFC4409]. The process should be
+   wrapped into a secured flow (like TLS). For a real use-case of [sendmail],
+   you should look into [sendmail-lwt] which takes care about the TLS layer. *)

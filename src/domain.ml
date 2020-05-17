@@ -127,12 +127,12 @@ module Decoder = struct
     <* char ']'
 
   let of_string_exn x =
-    match parse_string (domain <|> address_literal) x with
+    match parse_string ~consume:Consume.All (domain <|> address_literal) x with
     | Ok v -> v
     | Error _ -> Fmt.invalid_arg "Invalid domain: %s" x
 
   let of_string x =
-    match parse_string (domain <|> address_literal) x with
+    match parse_string ~consume:Consume.All (domain <|> address_literal) x with
     | Ok _ as v -> v
     | Error _ -> error_msgf "Invalid domain: %S" x
 end

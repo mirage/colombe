@@ -300,7 +300,7 @@ let of_stream stream =
       ( match w with
         | Field.Unstructured ->
           if Field_name.equal field_name received
-          then match Angstrom.parse_string Decoder.stamp (of_unstructured v) with
+          then match Angstrom.parse_string ~consume:Angstrom.Consume.All Decoder.stamp (of_unstructured v) with
             | Ok v -> go (v :: acc)
             | Error _ -> go acc
           else go acc
