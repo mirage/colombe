@@ -31,7 +31,7 @@ module Decoder = struct
       reverse_path
       >>= fun reverse_path -> option [] (char ' ' *> mail_parameters)
       >>| fun parameters -> (reverse_path, parameters) in
-    match parse_string p x with
+    match parse_string ~consume:Consume.All p x with
     | Ok v -> v
     | Error _ -> Fmt.invalid_arg "Invalid reverse-path: %s" x
 end

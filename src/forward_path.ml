@@ -39,7 +39,7 @@ module Decoder = struct
     let p = p
       >>= fun forward_path -> (option [] (char ' ' *> mail_parameters))
       >>| fun parameters -> (forward_path, parameters) in
-    match parse_string p x with
+    match parse_string ~consume:Consume.All p x with
     | Ok v -> v
     | Error _ -> Fmt.invalid_arg "Invalid forward-path: %s" x
 end
