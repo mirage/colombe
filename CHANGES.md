@@ -1,3 +1,9 @@
+### v0.3.0 2020-05-17 Paris (France)
+
+- Fix opam file (#22, @kit-ty-kate)
+- Better documentation (#23 & #24, @dinosaure)
+- Update to `angstrom.0.14.0` (#24, @dinosaure)
+
 ### v0.2.0 2020-03-14 Paris (France)
 
 - Fix warnings from OCaml 4.08.1
