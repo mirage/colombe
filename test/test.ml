@@ -287,9 +287,19 @@ let test_replies_1 () =
   in
   List.map make (List.combine results replies)
 
+let malformed_354 () =
+  Alcotest.test_case "malformed 354" `Quick @@ fun () ->
+  let res0 = Reply.Decoder.of_string "354\r\n" in
+  let res1 = Reply.Decoder.of_string "354foo\r\n" in
+  match res0, res1 with
+  | Ok _, Error _ -> Alcotest.(check pass) "resilient 354 reply parser" () ()
+  | Error _, _ -> Alcotest.failf "Impossible to parse \"354\""
+  | _, Ok _ -> Alcotest.failf "Should not be able to parse \"354foo\""
+
 let () =
   Alcotest.run "colombe"
     [ "requests 0", test_requests_0 ()
     ; "requests 1", test_requests_1 ()
     ; "replies 0", test_replies_0 ()
-    ; "replies 1", test_replies_1 () ]
+    ; "replies 1", test_replies_1 ()
+    ; "malformed 354", [ malformed_354 () ] ]
