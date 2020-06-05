@@ -255,6 +255,35 @@ let test_6 () =
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> Fmt.failwith "Unexpected valid result"
 
+let test_7 () =
+  Alcotest.test_case "ethereal" `Quick @@ fun () ->
+  let ctx = Colombe.State.Context.make () in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [ "220 smtp.gmail.com ESTMP - gsmtp"
+      ; "250-smtp.gmail.com at your service, [8.8.8.8]"
+      ; "250 AUTH LOGIN PLAIN"
+      ; "250 <romain.calascibetta@gmail.com> as sender"
+      ; "250 <anil@recoil.org> as recipient"
+      ; "354" (* no space, must resilient. *)
+      ; "250 Sended!"
+      ; "221 Closing connection." ]
+      [ "EHLO ethereal.email"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "RCPT TO:<anil@recoil.org>"
+      ; "DATA"
+      ; "."
+      ; "QUIT" ] in
+  let fiber = Sendmail.sendmail
+      unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "ethereal"; "email" ])
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
+      (fun () -> unix.return None) in
+  match Unix_scheduler.prj fiber with
+  | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
+  | Ok _ -> is_empty ()
+
 let () =
   Alcotest.run "sendmail" [ "mock", [ test_0 ()
                                     ; test_1 ()
@@ -262,4 +291,5 @@ let () =
                                     ; test_3 ()
                                     ; test_4 ()
                                     ; test_5 ()
-                                    ; test_6 () ] ]
+                                    ; test_6 ()
+                                    ; test_7 () ] ]

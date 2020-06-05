@@ -253,7 +253,11 @@ module Decoder = struct
           let k code' decoder = go code code' [ Bytes.sub_string raw_crlf off (len - 2) ] decoder in
           number k decoder
       | Some chr ->
-        leave_with decoder (`Unexpected_char chr)
+        let raw_crlf, off, len = peek_while_eol decoder in
+        if len = 2 (* CRLF *)
+        then ( let reply = v code [ Bytes.sub_string raw_crlf off (len - 2) ] in
+               decoder.pos <- decoder.pos + len ; k reply decoder )
+        else leave_with decoder (`Unexpected_char chr)
       | None ->
         leave_with decoder `End_of_input in
     number k decoder
