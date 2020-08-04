@@ -6,9 +6,9 @@
   (preprocess future_syntax))
 
 (library
-  (name sendmail_with_tls)
-  (public_name sendmail.tls)
-  (modules sendmail_with_tls)
+  (name sendmail_with_starttls)
+  (public_name sendmail.starttls)
+  (modules sendmail_with_starttls)
   (libraries tls sendmail)
   (preprocess future_syntax))
 
@@ -16,4 +16,4 @@
   (name sendmail_lwt)
   (public_name sendmail-lwt)
   (modules sendmail_lwt)
-  (libraries sendmail domain-name lwt tls tls.lwt))
+  (libraries sendmail sendmail.starttls domain-name lwt tls tls.lwt))
