@@ -69,3 +69,24 @@ let () = match Lwt_main.run (run ()) with
    [mrmime] - or yourself.
 
     [sendmail] starts by itself a TLS connection with the SMTP server. *)
+
+val sendmail_with_starttls :
+  hostname:'a Domain_name.t ->
+  ?port:int ->
+  domain:Colombe.Domain.t ->
+  authenticator:X509.Authenticator.t ->
+  ?authentication:Sendmail.authentication ->
+  Colombe.Reverse_path.t ->
+  Colombe.Forward_path.t list ->
+  (unit -> (string * int * int) option Lwt.t) ->
+  (unit, Sendmail_with_starttls.error) result Lwt.t
+(** [sendmail_with_starttls] is {!sendmail} but a part of the communication is insecure. Usually, a SMTP
+   service provides 2 submission services:
+
+    {ul
+    {- An implicitely secured one on [*:465].}
+    {- An explicitely secured one (with [STARTTLS]) on [*:587].}}
+
+    The user should use the first one but in the context of the non-existence of it, the second one is
+   available. Usage and arguments are the same. However, default value of [port] is the default value of
+   your operating system (see {Unix.getprotobyname}). *)
