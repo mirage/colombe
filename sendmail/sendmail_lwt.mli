@@ -89,4 +89,4 @@ val sendmail_with_starttls :
 
     The user should use the first one but in the context of the non-existence of it, the second one is
    available. Usage and arguments are the same. However, default value of [port] is the default value of
-   your operating system (see {Unix.getprotobyname}). *)
+   your operating system (see {!Unix.getprotobyname}). *)
