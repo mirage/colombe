@@ -1,3 +1,18 @@
+### v0.4.0 2020-27-11 Paris (France)
+
+- Be resilient when we parse a replies (#27, @dinosaure, review by @mikonieminen)
+- **breaking changes**
+  Rename `sendmail.tls` to `sendmail.starttls`
+  Rename `Sendmail_with_tls` to `Sendmail_with_starttls`
+  (#28, @dinosaure, issue #25)
+- Handle dot special character when we transmit the mail
+  (#30, @dinosaure, review by @mikonieminen, @jerben and @Julow, issue #29)
+
+  `sendmail` already expects a stream which emits line per line the mail
+  but it sanitizes now the dot character according the SMTP protocol. If
+  the user uses `mrmime` to generate the mail, he should upgrade it to
+  `mrmime.0.3.2`. Otherwise, it must respect this assumption.
+
 ### v0.3.0 2020-05-17 Paris (France)
 
 - Fix opam file (#22, @kit-ty-kate)
