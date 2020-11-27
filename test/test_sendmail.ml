@@ -284,6 +284,93 @@ let test_7 () =
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> is_empty ()
 
+let stream_of_string str =
+  let once = ref false in
+  fun () -> if !once then None else ( once := true ; Some (str, 0, String.length str) )
+
+let stream_of_strings vs =
+  let vs = ref vs in
+  fun () -> match !vs with
+            | [] -> None
+            | hd :: tl -> vs := tl ; Some (hd, 0, String.length hd)
+
+let _78_a_with_dot_rw =
+  [ String.make 78 'a' ^ "\r\n"
+  ; "." ^ String.make 77 'a' ]
+
+let _75_a_with_dot_qp =
+  String.make 75 'a' ^ "." ^ String.make 74 'a'
+
+let test_8 () =
+  Alcotest.test_case "dot" `Quick @@ fun () ->
+  let ctx = Colombe.State.Context.make () in
+  let mail =
+    let open Mrmime in
+    let subject = Unstructured.Craft.(compile [ v "Simple"; sp 1; v "Mail" ]) in
+    let hd0 =
+      let content0 = Content_type.(make `Text (Subtype.v `Text "plain") Parameters.(of_list [ k "charset", v "utf-8" ])) in
+      Header.of_list Field.[ Field (Field_name.content_type, Content, content0)
+                                         ; Field (Field_name.content_encoding, Encoding, `Bit8) ] in
+    let hd1 =
+      let content1 = Content_type.(make `Text (Subtype.v `Text "plain") Parameters.(of_list [ k "charset", v "utf-8" ])) in
+      Header.of_list Field.[ Field (Field_name.content_type, Content, content1)
+                                         ; Field (Field_name.content_encoding, Encoding, `Quoted_printable) ] in
+    let part0 = Mt.part ~header:hd0 (stream_of_strings _78_a_with_dot_rw) in
+    let part1 = Mt.part ~header:hd1 (stream_of_string _75_a_with_dot_qp) in
+    let header =
+      Header.of_list
+        Field.[ Field (Field_name.sender, Mailbox, romain_calascibetta)
+                     ; Field (Field_name.subject, Unstructured, subject)
+                     ; Field (Field_name.v "To", Addresses, [ `Mailbox anil ]) ] in
+    Mt.make header Mt.multi (Mt.multipart ~boundary:"boundary" ~rng:Mt.rng [ part0; part1 ]) in
+  let stream =
+    let stream = Mrmime.Mt.to_stream mail in
+    fun () -> unix.return (stream ()) in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [ "220 smtp.gmail.com ESTMP - gsmtp"
+      ; "250-smtp.gmail.com at your service, [8.8.8.8]"
+      ; "250 AUTH LOGIN PLAIN"
+      ; "250 <romain.calascibetta@gmail.com> as sender"
+      ; "250 <anil@recoil.org> as recipient"
+      ; "354 "
+      ; "250 Sended!"
+      ; "221 Closing connection." ]
+      [ "EHLO mailtrap.io"
+      ; "MAIL FROM:<romain.calascibetta@gmail.com>"
+      ; "RCPT TO:<anil@recoil.org>"
+      ; "DATA"
+      ; "Sender: romain.calascibetta@gmail.com"
+      ; "Subject: Simple Mail"
+      ; "To: anil@recoil.org"
+      ; "Content-Type: multipart/mixed; boundary=boundary"
+      ; ""
+      ; "--boundary"
+      ; "Content-Type: text/plain; charset=utf-8"
+      ; "Content-Transfer-Encoding: 8bit"
+      ; ""
+      ; "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ; "..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ; "--boundary"
+      ; "Content-Type: text/plain; charset=utf-8"
+      ; "Content-Transfer-Encoding: quoted-printable"
+      ; ""
+      ; "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
+      ; "..aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ; ""
+      ; "--boundary--"
+      ; "."
+      ; "QUIT" ] in
+  let fiber = Sendmail.sendmail
+                unix rdwr () ctx
+                ~domain:(Colombe.Domain.Domain [ "mailtrap"; "io" ])
+                (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+                [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
+                stream in
+  match Unix_scheduler.prj fiber with
+  | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
+  | Ok _ -> is_empty ()
+
 let () =
   Alcotest.run "sendmail" [ "mock", [ test_0 ()
                                     ; test_1 ()
@@ -292,4 +379,5 @@ let () =
                                     ; test_4 ()
                                     ; test_5 ()
                                     ; test_6 ()
-                                    ; test_7 () ] ]
+                                    ; test_7 ()
+                                    ; test_8 () ] ]
