@@ -100,7 +100,8 @@ val sendmail :
   reverse_path -> forward_path list ->
   ((string * int * int), 's) stream ->
   ((unit, error) result, 's) io
-(** [sendmail impl rdwr flow ctx tls_config ?authentication ~domain sender recipients mail] where:
+(** [sendmail impl rdwr flow ctx tls_config ?authentication ~domain sender
+   recipients mail] where:
 
     {ul
     {- [impl] is the scheduler (unix, lwt or async)}
@@ -113,6 +114,11 @@ val sendmail :
     {- [recipients] recipients of the mail}
     {- [mail] stream of the mail}}
 
-    This process try to send a mail according [RFC4409]. It ensures to use [STARTTLS] (eg. [RFC3207]) while the process
-    according TLS configuration [tls_config]. If [authentication] is given, it does the authentication
-    only while TLS flow. Mail is sended only while TLS flow. *)
+    This process try to send a mail according [RFC4409]. It ensures to use
+   [STARTTLS] (eg. [RFC3207]) while the process according TLS configuration
+   [tls_config]. If [authentication] is given, it does the authentication only
+   while TLS flow. Mail is sended only while TLS flow.
+
+    The stream [mail] must respects same assumptions as
+   {!Sendmail_lwt.sendmail}. *)
+
