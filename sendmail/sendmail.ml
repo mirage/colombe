@@ -233,7 +233,9 @@ let sendmail ({ bind; return; } as impl) rdwr flow context ?authentication ~doma
   (* assert that context is empty. *)
   let rec go = function
     | Some (buf, off, len) ->
-      rdwr.wr flow buf off len >>- mail >>- go
+       if len >= 1 && buf.[off] = '.'
+       then ( rdwr.wr flow "." 0 1 >>- fun () -> rdwr.wr flow buf off len >>- mail >>- go )
+       else rdwr.wr flow buf off len >>- mail >>- go
     | None -> return () in
   Log.debug (fun m -> m "Start to send email") ;
   mail () >>- go >>- fun () ->

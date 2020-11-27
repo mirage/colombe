@@ -558,6 +558,8 @@ let run
       | Error err -> return (Error err : ('a, 'err) result) in
     go m
 
+let _dot = Cstruct.of_string "."
+
 let sendmail { bind; return } rdwr flow ctx mail =
   let ( >>= ) = bind in
 
@@ -574,7 +576,8 @@ let sendmail { bind; return } rdwr flow ctx mail =
       | None -> return state
       | Some (buf, off, len) ->
         let raw = Cstruct.of_string buf ~off ~len in
-        match Tls.Engine.send_application_data state [ raw ] with
+        let raw = if len >= 1 && buf.[off] = '.' then [ _dot; raw ] else [ raw ] in
+        match Tls.Engine.send_application_data state raw with
         | Some (state, raw) ->
           let buf = Cstruct.to_string raw in
           rdwr.wr flow buf 0 (Cstruct.len raw) >>= fun () -> go state
