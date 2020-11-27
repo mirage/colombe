@@ -25,7 +25,7 @@ val sendmail :
 
     The connection already start a TLS connection to the peer. The peer is
    probably available on [*:465] (the default of [port] argument). The [mail]
-   stream {b must} emit for each chunk a CRLF at the end. As an user of GMail,
+   stream {b must} emit for each chunk a CRLF at the end (a line). As an user of GMail,
    the call of [sendmail] looks like:
 
     {[
@@ -65,8 +65,16 @@ let () = match Lwt_main.run (run ()) with
     [sendmail] does not strictly depend on [mrmime] or [emile]. However, we
    advise to use them to produce typed and well-formed mails. [sendmail] does
    not handle properly contents of mails as are. It just emits the stream to the
-   pipeline directly without any changes. Again, this job can be done by
-   [mrmime] - or yourself.
+   pipeline directly without any changes if the line does not start with a dot
+   (["."]). Otherwise, it prepends the line with a new dot (which has a
+   signification in terms of SMTP).
+
+    We assume that each call of [mail ()] gives to us a line - something which
+   ends up with CRLF (["\r\n"]). By this way, we can {i sanitize} the dot
+   character - and only on this way.
+
+    [mrmime] ensures to make on its way a stream which emits line per line. A
+   non-user of [mrmime] should be aware about this assumption.
 
     [sendmail] starts by itself a TLS connection with the SMTP server. *)
 
