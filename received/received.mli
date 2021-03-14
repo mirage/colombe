@@ -17,15 +17,21 @@ val received_by : t -> Colombe.Domain.t with_info option
 val received_from : t -> Colombe.Domain.t with_info option
 val received_for : t -> Colombe.Path.t option
 
-type link
+type link = private [ `TCP | `Atom of string ]
 (** Type of underlying protocol used to receive email. *)
 
-type protocol
+type protocol = private
+  [ `ESMTP | `SMTP | `Atom of string ]
 (** Type of protocol used to receive email:
     {ul
     {- [SMTP]}
     {- [ESMTP]}
     {- Other protocol}} *)
+
+val received_with : t -> protocol option
+val received_via : t -> link option
+val id : t -> [ `Local of Emile.local | `MsgID of Mrmime.MessageID.t | `Atom of string ] option
+val date_time : t -> Mrmime.Date.t
 
 type 'a stream = unit -> 'a option
 
