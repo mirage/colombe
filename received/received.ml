@@ -110,6 +110,7 @@ let pp_id ppf = function
 let pp_for = Path.pp
 
 let pp ppf t =
+  let ptime, tz_offset_s = (Rresult.R.get_ok <.> Date.to_ptime) t.date_time in
   Fmt.pf ppf "from: %a@\n\
               by:   %a@\n\
               via:  %a@\n\
@@ -123,7 +124,7 @@ let pp ppf t =
     Fmt.(option pp_with) t._with
     Fmt.(option pp_id) t.id
     Fmt.(option pp_for) t._for
-    Fmt.(using (Rresult.R.get_ok <.> Date.to_ptime) (Ptime.pp_rfc3339 ())) t.date_time
+    (Ptime.pp_rfc3339 ~tz_offset_s ()) ptime
 
 let some x : _ option = Some x
 
