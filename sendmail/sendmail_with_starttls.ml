@@ -269,13 +269,13 @@ module Make_with_tls (Value : VALUE)
       let raw = Cstruct.of_bytes buffer_with_tls ~off:0 ~len in
 
       match Tls.Engine.handle_tls state raw with
-      | `Ok (`Ok state, resp, data) ->
+      | Ok (`Ok state, resp, data) ->
         fiber_read state resp data
-      | `Ok (`Eof, _resp, _data) ->
+      | Ok (`Eof, _resp, _data) ->
         Fmt.failwith "Reach End-of-stream while handshake"
-      | `Fail (failure, `Response resp) ->
+      | Error (failure, `Response resp) ->
         (go_to_failure failure <.> only_write_tls) (`Response (Some resp))
-      | `Ok (`Alert alert, resp, _data) ->
+      | Ok (`Alert alert, resp, _data) ->
         (go_to_alert alert <.> only_write_tls) resp in
 
     Read { k= k_handshake state; buffer= buffer_with_tls; off= 0; len= 0x1000; }
@@ -321,11 +321,11 @@ module Make_with_tls (Value : VALUE)
         let raw = Cstruct.of_bytes ~off:0 ~len:n buffer_with_tls in
 
         match Tls.Engine.handle_tls state raw with
-        | `Ok (`Ok state, `Response None, `Data data) ->
+        | Ok (`Ok state, `Response None, `Data data) ->
           ctx.tls <- Some state ; fiber_read data
-        | `Ok (`Ok state, `Response resp, `Data data) ->
+        | Ok (`Ok state, `Response resp, `Data data) ->
           ctx.tls <- Some state ; fiber_write data resp
-        | `Ok (`Eof, `Response resp, `Data data) ->
+        | Ok (`Eof, `Response resp, `Data data) ->
           ctx.tls <- None ;
           let rec go_to_eof = function
             | Read { k; _ } -> k 0 (* emit end-of-stream *)
@@ -333,9 +333,9 @@ module Make_with_tls (Value : VALUE)
               Write { k= go_to_eof <.> k; buffer; off; len;  }
             | v -> v in
           go_to_eof (fiber_write data resp)
-        | `Fail (failure, `Response resp) ->
+        | Error (failure, `Response resp) ->
           (go_to_failure failure <.> only_write_tls) (`Response (Some resp))
-        | `Ok (`Alert alert, `Response resp, `Data _) ->
+        | Ok (`Alert alert, `Response resp, `Data _) ->
           (go_to_alert alert <.> only_write_tls) (`Response resp) in
 
       Read { k; buffer= buffer_with_tls; off= 0; len= (Bytes.length buffer_with_tls); }
