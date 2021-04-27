@@ -19,12 +19,8 @@ build: [
 depends: [
   "ocaml"    {>= "4.03.0"}
   "dune"     {>= "1.8.0"}
-  "mrmime"   {>= "0.2.0"}
+  "mrmime"   {>= "0.4.0"}
   "emile"    {>= "0.8"}
   "angstrom" {>= "0.14.0"}
   "colombe"  {>= "0.4.0"}
-]
-
-pin-depends: [
-  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git#0389082a3f315047acae420bd07326d725bd5103" ]
 ]
