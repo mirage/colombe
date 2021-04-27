@@ -19,10 +19,10 @@ build: [
 depends: [
   "ocaml"    {>= "4.03.0"}
   "dune"     {>= "1.8.0"}
-  "colombe"  {= version}
   "mrmime"   {>= "0.2.0"}
   "emile"    {>= "0.8"}
   "angstrom" {>= "0.14.0"}
+  "colombe"  {>= "0.4.0"}
 ]
 
 pin-depends: [
