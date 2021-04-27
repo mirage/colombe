@@ -1,3 +1,22 @@
+### v0.4.1 2021-04-27 Paris (France)
+
+- Upgrade to `tls.0.13.0` (#34, @dinosaure)
+
+### v0.4.0 2020-11-29 Paris (France)
+
+- Be resilient when we parse a replies (mirage/colombe#27, @dinosaure, review by @mikonieminen)
+- **breaking changes**
+  Rename `sendmail.tls` to `sendmail.starttls`
+  Rename `Sendmail_with_tls` to `Sendmail_with_starttls`
+  (mirage/colombe#28, @dinosaure, issue mirage/colombe#25)
+- Handle dot special character when we transmit the mail
+  (mirage/colombe#30, @dinosaure, review by @mikonieminen, @jerben and @Julow, issue mirage/colombe#29)
+
+  `sendmail` already expects a stream which emits line per line the mail
+  but it sanitizes now the dot character according the SMTP protocol. If
+  the user uses `mrmime` to generate the mail, he should upgrade it to
+  `mrmime.0.3.2`. Otherwise, it must respect this assumption.        
+
 ### v0.3.0 2020-05-17 Paris (France)
 
 - Fix opam file (#22, @kit-ty-kate)
