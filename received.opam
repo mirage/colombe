@@ -24,3 +24,7 @@ depends: [
   "emile"    {>= "0.8"}
   "angstrom" {>= "0.14.0"}
 ]
+
+pin-depends: [
+  [ "mrmime.dev" "git+https://github.com/mirage/mrmime.git#0389082a3f315047acae420bd07326d725bd5103" ]
+]

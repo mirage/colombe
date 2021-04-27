@@ -9,6 +9,14 @@ end
 
 type 'a stream = unit -> 'a option
 type protocol = [ `ESMTP | `SMTP | `Atom of string ]
+(* TODO(dinosaure): according to RFC3848, we should add:
+   - ESMTPA
+   - ESMTPS
+   - ESMTPSA
+   - LMTP
+   - LMTPA
+   - LMTPSA
+*)
 type link = [ `TCP | `Atom of string ]
 
 type 'a with_info =
@@ -28,6 +36,11 @@ type t =
          | `Atom of string ] option
   ; _for : Path.t option
   ; date_time : Mrmime.Date.t }
+
+let received_with { _with; _ } = _with
+let received_via { via; _ } = via
+let id { id; _ } = id
+let date_time { date_time; _ } = date_time
 
 let map_domain = function
   | Domain.IPv4 v -> `Addr (Emile.IPv4 v)
@@ -110,6 +123,7 @@ let pp_id ppf = function
 let pp_for = Path.pp
 
 let pp ppf t =
+  let ptime, tz_offset_s = (Rresult.R.get_ok <.> Date.to_ptime) t.date_time in
   Fmt.pf ppf "from: %a@\n\
               by:   %a@\n\
               via:  %a@\n\
@@ -123,7 +137,7 @@ let pp ppf t =
     Fmt.(option pp_with) t._with
     Fmt.(option pp_id) t.id
     Fmt.(option pp_for) t._for
-    Fmt.(using (Rresult.R.get_ok <.> Date.to_ptime) (Ptime.pp_rfc3339 ())) t.date_time
+    (Ptime.pp_rfc3339 ~tz_offset_s ()) ptime
 
 let some x : _ option = Some x
 
@@ -171,9 +185,11 @@ module Decoder = struct
 
   let id =
     let msg_id = MessageID.Decoder.message_id >>| fun v -> `MsgID v in
-    let local = Emile.Parser.local_part >>| fun v -> `Local v in
-    option () cfws *> id *> fws
-    *> (msg_id <|> local <|> atom)
+    let local = Path.Decoder.local_part >>| function
+      | `String v -> `Local [ `String v ]
+      | `Dot_string vs -> List.map (fun v -> `Atom v) vs |> fun vs -> `Local vs in
+    option () cfws *> id
+    *> fws *> (msg_id <|> local <|> atom)
   let id = lift some id
 
   let _for =
@@ -194,14 +210,39 @@ module Decoder = struct
   let from_domain = string_ci "from" *> skip_while is_wsp *> extended_domain
   let by_domain = option () cfws *> string_ci "by" *> skip_while is_wsp *> extended_domain
 
+  let separator =
+        (option () cfws *> char ';' *> skip_while is_wsp)
+    <|> (take_while1 is_wsp >>= fun _ -> return ())
+
+  let to_end_of_input buf =
+    fix @@ fun m -> at_end_of_input >>= function
+    | false -> available >>= take >>= fun str -> Buffer.add_string buf str ; m
+    | true -> return (Buffer.contents buf)
+
+  let date_time =
+        date_time
+    <|> ( to_end_of_input (Buffer.create 0x100) >>= fun str ->
+          match Ptime.of_rfc3339 ~sub:true (String.trim str) with
+          | Ok (ptime, Some tz_offset_s, _) ->
+            let hh = tz_offset_s / 3600 in
+            let mm = (tz_offset_s mod 3600) / 60 in
+            let zone = Date.Zone.TZ (hh, mm) in
+            let date_time = Date.of_ptime ~zone ptime in
+            return date_time
+          | Ok (ptime, None, _) ->
+            let zone = Date.Zone.UT (* TODO *) in
+            let date_time = Date.of_ptime ~zone ptime in
+            return date_time
+          | _ -> fail "date_time" )
+
   let stamp =
-    fws *> option None (lift some from_domain) >>= fun from_domain ->
-    fws *> option None (lift some by_domain)   >>= fun by_domain ->
-    fws *> option None via   >>= fun via ->
-    fws *> option None _with >>= fun _with ->
-    fws *> option None id    >>= fun id ->
-    fws *> option None _for  >>= fun _for ->
-    option () cfws *> char ';' *> skip_while is_wsp *>
+    option None (lift some (fws *> from_domain)) >>= fun from_domain ->
+    option None (lift some (fws *> by_domain))   >>= fun by_domain ->
+    option None (fws *> via)   >>= fun via ->
+    option None (fws *> _with) >>= fun _with ->
+    option None (fws *> id)    >>= fun id ->
+    option None (fws *> _for)  >>= fun _for ->
+    separator >>= fun _ ->
     date_time >>= fun date_time ->
     return { from= from_domain
            ; by= by_domain
@@ -300,9 +341,11 @@ let of_stream stream =
       ( match w with
         | Field.Unstructured ->
           if Field_name.equal field_name received
-          then match Angstrom.parse_string ~consume:Angstrom.Consume.All Decoder.stamp (of_unstructured v) with
+          then
+            let v = of_unstructured v in
+            match Angstrom.parse_string ~consume:Prefix Decoder.stamp v with
             | Ok v -> go (v :: acc)
-            | Error _ -> go acc
+            | Error _err -> go acc
           else go acc
         | _ -> go acc )
     | `Malformed err ->
