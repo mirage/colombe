@@ -9,8 +9,7 @@ type pos_completion =
   | `PP_252 of string list ]
 
 (* Temporary positive response *)
-type pos_intermediate =
-  [ `TP_354 of string list ]
+type pos_intermediate = [ `TP_354 of string list ]
 
 (* Temporary negativ response *)
 type transient_neg_completion =
@@ -41,11 +40,10 @@ type t =
   | permanent_neg_completion
   | `Other of int * string list ]
 
-let equal_values a b =
-  try List.for_all2 String.equal a b
-  with _ -> false
+let equal_values a b = try List.for_all2 String.equal a b with _ -> false
 
-let equal a b = match a, b with
+let equal a b =
+  match (a, b) with
   | `PP_211 a, `PP_211 b -> equal_values a b
   | `PP_214 a, `PP_214 b -> equal_values a b
   | `PP_220 a, `PP_220 b -> equal_values a b
@@ -71,7 +69,7 @@ let equal a b = match a, b with
   | `PN_554 a, `PN_554 b -> equal_values a b
   | `PN_555 a, `PN_555 b -> equal_values a b
   | `Other (code_a, a), `Other (code_b, b) ->
-    code_a = code_b && equal_values a b
+      code_a = code_b && equal_values a b
   | _, _ -> false
 
 let pp ppf = function
@@ -99,7 +97,8 @@ let pp ppf = function
   | `PN_553 lines -> Fmt.pf ppf "(553 @[<hov>%a@])" Fmt.(Dump.list string) lines
   | `PN_554 lines -> Fmt.pf ppf "(554 @[<hov>%a@])" Fmt.(Dump.list string) lines
   | `PN_555 lines -> Fmt.pf ppf "(555 @[<hov>%a@])" Fmt.(Dump.list string) lines
-  | `Other (code, lines) -> Fmt.pf ppf "(%03d @[<hov>%a@])" code Fmt.(Dump.list string) lines
+  | `Other (code, lines) ->
+      Fmt.pf ppf "(%03d @[<hov>%a@])" code Fmt.(Dump.list string) lines
 
 let to_int = function
   | `PP_211 _ -> 211
@@ -155,11 +154,13 @@ let lines = function
   | `PN_553 lines
   | `PN_554 lines
   | `PN_555 lines
-  | `Other (_, lines) -> lines
+  | `Other (_, lines) ->
+      lines
 
-let compare a b = (to_int a) - (to_int b)
+let compare a b = to_int a - to_int b
 
-let v code lines = match code with
+let v code lines =
+  match code with
   | 211 -> `PP_211 lines
   | 214 -> `PP_214 lines
   | 220 -> `PP_220 lines
@@ -203,63 +204,79 @@ module Decoder = struct
     let raw, off, len = while1 is_digit decoder in
     let idx = ref 0 in
     let res = ref 0 in
-    while !idx < len
-    do res := (!res * 10) + (unsafe_get_uint8 raw (off + !idx) - 48) ; incr idx done ;
-    if len <> 3
-    then fail decoder (`Invalid_code !res)
-    else k !res decoder
+    while !idx < len do
+      res := (!res * 10) + (unsafe_get_uint8 raw (off + !idx) - 48) ;
+      incr idx
+    done ;
+    if len <> 3 then fail decoder (`Invalid_code !res) else k !res decoder
 
   let response k decoder =
     let rec go code code' lines decoder =
       (* let code' = number decoder in *)
       if code <> code'
       then fail decoder (`Invalid_code code')
-      else match peek_char decoder with
+      else
+        match peek_char decoder with
         | Some ' ' ->
+            junk_char decoder ;
+            let raw_crlf, off, len = peek_while_eol decoder in
+            let reply =
+              v code
+                (List.rev (Bytes.sub_string raw_crlf off (len - 2) :: lines))
+            in
+            decoder.pos <- decoder.pos + len ;
+            k reply decoder
+        | Some '-' ->
+            junk_char decoder ;
+            let raw_crlf, off, len = peek_while_eol decoder in
+            decoder.pos <- decoder.pos + len ;
+            if end_of_input decoder = decoder.pos
+            then
+              let k code' decoder =
+                go code code'
+                  (Bytes.sub_string raw_crlf off (len - 2) :: lines)
+                  decoder in
+              prompt (number k) decoder
+            else
+              let k code' decoder =
+                go code code'
+                  (Bytes.sub_string raw_crlf off (len - 2) :: lines)
+                  decoder in
+              number k decoder
+        | Some chr -> leave_with decoder (`Unexpected_char chr)
+        | None -> leave_with decoder `End_of_input in
+    let k code decoder =
+      match peek_char decoder with
+      | Some ' ' ->
           junk_char decoder ;
           let raw_crlf, off, len = peek_while_eol decoder in
-          let reply = v code (List.rev (Bytes.sub_string raw_crlf off (len - 2) :: lines)) in
-          decoder.pos <- decoder.pos + len ; k reply decoder
-        | Some '-' ->
+          let reply = v code [ Bytes.sub_string raw_crlf off (len - 2) ] in
+          decoder.pos <- decoder.pos + len ;
+          k reply decoder
+      | Some '-' ->
           junk_char decoder ;
-          let raw_crlf, off, len= peek_while_eol decoder in
+          let raw_crlf, off, len = peek_while_eol decoder in
           decoder.pos <- decoder.pos + len ;
           if end_of_input decoder = decoder.pos
           then
-            let k code' decoder = go code code' (Bytes.sub_string raw_crlf off (len - 2) :: lines) decoder in
+            let k code' decoder =
+              go code code' [ Bytes.sub_string raw_crlf off (len - 2) ] decoder
+            in
             prompt (number k) decoder
           else
-            let k code' decoder = go code code' (Bytes.sub_string raw_crlf off (len - 2) :: lines) decoder in
+            let k code' decoder =
+              go code code' [ Bytes.sub_string raw_crlf off (len - 2) ] decoder
+            in
             number k decoder
-        | Some chr ->
-          leave_with decoder (`Unexpected_char chr)
-        | None ->
-          leave_with decoder `End_of_input in
-    let k code decoder = match peek_char decoder with
-      | Some ' ' ->
-        junk_char decoder ;
-        let raw_crlf, off, len = peek_while_eol decoder in
-        let reply = v code [ Bytes.sub_string raw_crlf off (len - 2) ] in
-        decoder.pos <- decoder.pos + len ; k reply decoder
-      | Some '-' ->
-        junk_char decoder ;
-        let raw_crlf, off, len = peek_while_eol decoder in
-        decoder.pos <- decoder.pos + len ;
-        if end_of_input decoder = decoder.pos
-        then
-          let k code' decoder = go code code' [ Bytes.sub_string raw_crlf off (len - 2) ] decoder in
-          prompt (number k) decoder
-        else
-          let k code' decoder = go code code' [ Bytes.sub_string raw_crlf off (len - 2) ] decoder in
-          number k decoder
       | Some chr ->
-        let raw_crlf, off, len = peek_while_eol decoder in
-        if len = 2 (* CRLF *)
-        then ( let reply = v code [ Bytes.sub_string raw_crlf off (len - 2) ] in
-               decoder.pos <- decoder.pos + len ; k reply decoder )
-        else leave_with decoder (`Unexpected_char chr)
-      | None ->
-        leave_with decoder `End_of_input in
+          let raw_crlf, off, len = peek_while_eol decoder in
+          if len = 2 (* CRLF *)
+          then (
+            let reply = v code [ Bytes.sub_string raw_crlf off (len - 2) ] in
+            decoder.pos <- decoder.pos + len ;
+            k reply decoder)
+          else leave_with decoder (`Unexpected_char chr)
+      | None -> leave_with decoder `End_of_input in
     number k decoder
 
   let response decoder =
@@ -270,7 +287,8 @@ module Decoder = struct
 
   let of_string x =
     let decoder = decoder_from x in
-    let go x : (t, [> error ]) result = match x with
+    let go x : (t, [> error ]) result =
+      match x with
       | Read _ -> Error `End_of_input
       | Error { error; _ } -> Error error
       | Done v -> Ok v in
@@ -278,10 +296,13 @@ module Decoder = struct
 
   let of_string_raw x r =
     let decoder = decoder_from x in
-    let go x : (t, [> error ]) result = match x with
+    let go x : (t, [> error ]) result =
+      match x with
       | Read _ -> Error `End_of_input
       | Error { error; _ } -> Error error
-      | Done v -> r := decoder.pos ; Ok v in
+      | Done v ->
+          r := decoder.pos ;
+          Ok v in
     go (response decoder)
 end
 
@@ -302,33 +323,34 @@ module Encoder = struct
     match lines response with
     | [] -> Fmt.invalid_arg "Reply.Encoder.response: response can not be empty"
     | [ x ] ->
-      write_number (code response) encoder ;
-      write " " encoder ;
-      write x encoder ;
-      crlf encoder ;
-      flush k encoder
+        write_number (code response) encoder ;
+        write " " encoder ;
+        write x encoder ;
+        crlf encoder ;
+        flush k encoder
     | x :: r ->
-      let code = code response in
-      write_number code encoder ;
-      write "-" encoder ;
-      write x encoder ;
-      crlf encoder ;
+        let code = code response in
+        write_number code encoder ;
+        write "-" encoder ;
+        write x encoder ;
+        crlf encoder ;
 
-      let rec go l k encoder = match l with
-        | [] -> assert false (* XXX(dinosaure): impossible case. *)
-        | [ x ] ->
-          write_number code encoder ;
-          write " " encoder ;
-          write x encoder ;
-          crlf encoder ;
-          flush k encoder
-        | x :: r ->
-          write_number code encoder ;
-          write "-" encoder ;
-          write x encoder ;
-          crlf encoder ;
-          flush (safe (go r k)) encoder in
-      flush (safe (go r k)) encoder
+        let rec go l k encoder =
+          match l with
+          | [] -> assert false (* XXX(dinosaure): impossible case. *)
+          | [ x ] ->
+              write_number code encoder ;
+              write " " encoder ;
+              write x encoder ;
+              crlf encoder ;
+              flush k encoder
+          | x :: r ->
+              write_number code encoder ;
+              write "-" encoder ;
+              write x encoder ;
+              crlf encoder ;
+              flush (safe (go r k)) encoder in
+        flush (safe (go r k)) encoder
 
   let response x encoder =
     let k _ = Done in
@@ -337,10 +359,11 @@ module Encoder = struct
   let to_string x =
     let encoder = encoder () in
     let res = Buffer.create 16 in
-    let rec go x : (string, error) result = match x with
+    let rec go x : (string, error) result =
+      match x with
       | Write { buffer; off; len; continue } ->
-        Buffer.add_substring res buffer off len ;
-        go (continue len)
+          Buffer.add_substring res buffer off len ;
+          go (continue len)
       | Error error -> Error error
       | Done -> Ok (Buffer.contents res) in
     go (response x encoder)
