@@ -9,8 +9,7 @@ type pos_completion =
   | `PP_252 of string list ]
 
 (* Temporary positive response *)
-type pos_intermediate =
-  [ `TP_354 of string list ]
+type pos_intermediate = [ `TP_354 of string list ]
 
 (* Temporary negativ response *)
 type transient_neg_completion =
@@ -42,10 +41,15 @@ type t =
   | `Other of int * string list ]
 
 val pp : t Fmt.t
+
 val compare : t -> t -> int
+
 val equal : t -> t -> bool
+
 val v : int -> string list -> t
+
 val code : t -> int
+
 val lines : t -> string list
 
 module Decoder : sig
@@ -56,6 +60,7 @@ module Decoder : sig
   val response : Decoder.decoder -> (t, [> error ]) Decoder.state
 
   val of_string : string -> (t, [> error ]) result
+
   val of_string_raw : string -> int ref -> (t, [> error ]) result
 end
 
@@ -65,5 +70,6 @@ module Encoder : sig
   val pp_error : error Fmt.t
 
   val response : t -> Encoder.encoder -> [> error ] Encoder.state
+
   val to_string : t -> (string, error) result
 end
