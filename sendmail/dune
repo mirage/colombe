@@ -1,19 +1,19 @@
 (library
-  (name sendmail)
-  (public_name sendmail)
-  (modules sendmail)
-  (libraries logs base64 colombe)
-  (preprocess future_syntax))
+ (name sendmail)
+ (public_name sendmail)
+ (modules sendmail)
+ (libraries logs base64 colombe)
+ (preprocess future_syntax))
 
 (library
-  (name sendmail_with_starttls)
-  (public_name sendmail.starttls)
-  (modules sendmail_with_starttls)
-  (libraries tls sendmail)
-  (preprocess future_syntax))
+ (name sendmail_with_starttls)
+ (public_name sendmail.starttls)
+ (modules sendmail_with_starttls)
+ (libraries tls sendmail)
+ (preprocess future_syntax))
 
 (library
-  (name sendmail_lwt)
-  (public_name sendmail-lwt)
-  (modules sendmail_lwt)
-  (libraries sendmail sendmail.starttls domain-name lwt tls tls.lwt))
+ (name sendmail_lwt)
+ (public_name sendmail-lwt)
+ (modules sendmail_lwt)
+ (libraries sendmail sendmail.starttls domain-name lwt tls tls.lwt))

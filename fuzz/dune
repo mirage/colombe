@@ -1,3 +1,9 @@
 (executable
  (name fuzz)
  (libraries colombe crowbar fmt))
+
+(rule
+ (alias runtest)
+ (package colombe)
+ (action
+  (run ./fuzz.exe)))
