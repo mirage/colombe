@@ -22,6 +22,7 @@ depends: [
   "angstrom" {>= "0.14.0"}
   "ocaml-syntax-shims"
   "alcotest" {with-test}
+  "crowbar" {with-test}
 ]
 depopts: [ "emile" ]
 conflicts: [ "emile" {< "0.8"} ]

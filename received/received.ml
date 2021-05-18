@@ -333,8 +333,7 @@ let of_unstructured v =
   | Error _ -> assert false (* TODO *)
 
 let of_stream stream =
-  let raw = Bigstringaf.create (2 * 0x1000) in
-  let decoder = Hd.decoder raw in
+  let decoder = Hd.decoder Field_name.Map.empty in
   let rec go acc = match Hd.decode decoder with
     | `Field field ->
       let Field.Field (field_name, w, v) = Location.prj field in
@@ -355,7 +354,6 @@ let of_stream stream =
       let buf, off, len = match stream () with 
         | Some (buf, off, len) -> buf, off, len
         | None -> "", 0, 0 in
-      match Hd.src decoder buf off len with
-      | Ok () -> go acc
-      | Error #Rresult.R.msg as err -> err in
+      Hd.src decoder buf off len ;
+      go acc in
   go []
