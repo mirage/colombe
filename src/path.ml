@@ -130,6 +130,9 @@ let of_string str =
   | Ok v -> Ok v
   | Error _ -> error_msgf "Invalid path: %S" str
 
+let of_string_exn str =
+  match of_string str with Ok v -> v | Error (`Msg err) -> invalid_arg err
+
 module Encoder = struct
   let need_to_escape, escape_char =
     (* See [Mrmime.Rfc822.of_escaped_character] but totally arbitrary. *)
