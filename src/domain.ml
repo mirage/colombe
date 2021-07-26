@@ -65,6 +65,12 @@ module Decoder = struct
 
   let let_dig = satisfy (is_alpha or is_digit)
 
+  (* XXX(dinosaure): Ldh-str = *( ALPHA / DIGIT / "-" ) Let-dig
+   * and Let-dig = ALPHA / DIGIT
+   *
+   * This [ldh_str] does not strictly follow the definition but just
+   * eats [*( ALPHA / DIGIT / "-" )] and check that the last character
+   * **is not** a dash. *)
   let ldh_str =
     take_while1 (is_alpha or is_digit or is_dash) >>= fun res ->
     if String.get res (String.length res - 1) <> '-'
