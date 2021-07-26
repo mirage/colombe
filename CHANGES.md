@@ -1,3 +1,8 @@
+### v0.4.2 2021-07-26 Paris (France)
+
+- Add `Path.of_string_exn` (@dinosaure, #40)
+- Be resilient about 334 argument and add regression test (@dinosaure, @jsthomas, #41)
+
 ### v0.4.1 2021-04-27 Paris (France)
 
 - Upgrade to `tls.0.13.0` (#34, @dinosaure)
