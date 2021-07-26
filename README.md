@@ -10,8 +10,8 @@ proper email or introspect an email, you should be interested by
 
 ## As a client
 
-The distribution provides `sendmail`, `sendmail.tls` and `sendmail-lwt` which
-are respectively:
+The distribution provides `sendmail`, `sendmail.starttls` and `sendmail-lwt`
+which are respectively:
 - An agnostic (to the system) implementation of an usual client with
   authentication
 - An agnostic (to the system) implementation of an usual client with
@@ -24,7 +24,7 @@ Depending on your context:
   [ASYNC][async] (or [UNIX][unix]) should be use. `sendmail-lwt` is a
   _specialization_ with [LWT][lwt].
 - If you want to communicate with a SMTP server which handles (and surely
-  requires) `STARTTLS` extension, (like `*:587`), `sendmail.tls` which a
+  requires) `STARTTLS` extension, (like `*:587`), `sendmail.starttls` with a
   scheduler should be use.
   
 Of course, a client can be more complex and can handle:
