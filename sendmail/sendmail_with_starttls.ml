@@ -248,7 +248,7 @@ module Make_with_tls (Value : VALUE) :
           let raw = Cstruct.shift raw n in
 
           (* XXX(dinosaure): write until raw is non-empty. *)
-          if Cstruct.len raw = 0
+          if Cstruct.length raw = 0
           then Return ()
           else
             Write
@@ -256,14 +256,14 @@ module Make_with_tls (Value : VALUE) :
                 k = k raw;
                 buffer = Cstruct.to_string raw;
                 off = 0;
-                len = Cstruct.len raw;
+                len = Cstruct.length raw;
               } in
         Write
           {
             k = k raw;
             buffer = Cstruct.to_string raw;
             off = 0;
-            len = Cstruct.len raw;
+            len = Cstruct.length raw;
           }
     | `Response None -> Return ()
 
@@ -288,7 +288,7 @@ module Make_with_tls (Value : VALUE) :
             let raw = Cstruct.shift raw n in
 
             (* XXX(dinosaure): write until raw is non-empty. *)
-            if Cstruct.len raw = 0
+            if Cstruct.length raw = 0
             then
               if Tls.Engine.handshake_in_progress state
               then
@@ -306,14 +306,14 @@ module Make_with_tls (Value : VALUE) :
                   k = k raw;
                   buffer = Cstruct.to_string raw;
                   off = 0;
-                  len = Cstruct.len raw;
+                  len = Cstruct.length raw;
                 } in
           Write
             {
               k = k raw;
               buffer = Cstruct.to_string raw;
               off = 0;
-              len = Cstruct.len raw;
+              len = Cstruct.length raw;
             }
       | `Response None -> k_fiber state
     and fiber_read state resp = function
@@ -323,8 +323,8 @@ module Make_with_tls (Value : VALUE) :
           let buffer =
             ctx.Context_with_tls.context.Context.decoder.Decoder.buffer in
           let max = ctx.Context_with_tls.context.Context.decoder.Decoder.max in
-          let len = min (Bytes.length buffer - max) (Cstruct.len raw) in
-          if len < Cstruct.len raw
+          let len = min (Bytes.length buffer - max) (Cstruct.length raw) in
+          if len < Cstruct.length raw
           then Fmt.failwith "Read buffer is full and TLS handshake is not done" ;
           (* TODO: this case is when, while handshake, we receive much more data
              that what we can store. We can not consume them because handshake is
@@ -359,7 +359,7 @@ module Make_with_tls (Value : VALUE) :
       { k = k_handshake state; buffer = buffer_with_tls; off = 0; len = 0x1000 }
 
   let rec go_with_tls ctx fiber delayed_data =
-    match (ctx.Context_with_tls.tls, fiber, Cstruct.len delayed_data) with
+    match (ctx.Context_with_tls.tls, fiber, Cstruct.length delayed_data) with
     | Some state, fiber, _ when not (Tls.Engine.can_handle_appdata state) ->
         let k state =
           ctx.tls <- Some state ;
@@ -378,7 +378,7 @@ module Make_with_tls (Value : VALUE) :
                 k;
                 buffer = Cstruct.to_string raw;
                 off = 0;
-                len = Cstruct.len raw;
+                len = Cstruct.length raw;
               }
         | None -> k len)
     | ( Some state,
@@ -394,7 +394,7 @@ module Make_with_tls (Value : VALUE) :
 
         let rec fiber_read = function
           | Some raw ->
-              let len = min (Cstruct.len raw) len_0 in
+              let len = min (Cstruct.length raw) len_0 in
               Log.debug (fun m -> m "=> %S" (Cstruct.to_string raw)) ;
               Cstruct.blit_to_bytes raw 0 buffer_without_tls off_0 len ;
               go_with_tls ctx (k_without_tls len) (Cstruct.shift raw len)
@@ -408,7 +408,7 @@ module Make_with_tls (Value : VALUE) :
                 let raw = Cstruct.shift raw n in
 
                 (* XXX(dinosaure): write until raw is non-empty. *)
-                if Cstruct.len raw = 0
+                if Cstruct.length raw = 0
                 then fiber_read data
                 else
                   Write
@@ -416,14 +416,14 @@ module Make_with_tls (Value : VALUE) :
                       k = k raw;
                       buffer = Cstruct.to_string raw;
                       off = 0;
-                      len = Cstruct.len raw;
+                      len = Cstruct.length raw;
                     } in
               Write
                 {
                   k = k raw;
                   buffer = Cstruct.to_string raw;
                   off = 0;
-                  len = Cstruct.len raw;
+                  len = Cstruct.length raw;
                 }
           | None -> fiber_read data
         and k n =
@@ -474,7 +474,7 @@ module Make_with_tls (Value : VALUE) :
     let state, raw = Tls.Engine.client config in
     let rec k raw len =
       let raw = Cstruct.shift raw len in
-      if Cstruct.len raw = 0
+      if Cstruct.length raw = 0
       then
         handle_handshake ctx state (fun state ->
             ctx.tls <- Some state ;
@@ -485,7 +485,7 @@ module Make_with_tls (Value : VALUE) :
             k = k raw;
             buffer = Cstruct.to_string raw;
             off = 0;
-            len = Cstruct.len raw;
+            len = Cstruct.length raw;
           } in
 
     (* XXX(dinosaure): clean decoder. *)
@@ -501,7 +501,7 @@ module Make_with_tls (Value : VALUE) :
         k = k raw;
         buffer = Cstruct.to_string raw;
         off = 0;
-        len = Cstruct.len raw;
+        len = Cstruct.length raw;
       }
 
   let starttls_as_server ctx config =
@@ -526,7 +526,7 @@ module Make_with_tls (Value : VALUE) :
         ctx.tls <- Some state ;
         let rec loop len =
           let raw = Cstruct.shift raw len in
-          if Cstruct.len raw = 0
+          if Cstruct.length raw = 0
           then Return ()
           else
             Write
@@ -534,14 +534,14 @@ module Make_with_tls (Value : VALUE) :
                 k = loop;
                 buffer = Cstruct.to_string raw;
                 off = 0;
-                len = Cstruct.len raw;
+                len = Cstruct.length raw;
               } in
         Write
           {
             k = loop;
             buffer = Cstruct.to_string raw;
             off = 0;
-            len = Cstruct.len raw;
+            len = Cstruct.length raw;
           }
     | None -> Return ()
 
@@ -761,7 +761,7 @@ let sendmail { bind; return } rdwr flow ctx mail =
             match Tls.Engine.send_application_data state raw with
             | Some (state, raw) ->
                 let buf = Cstruct.to_string raw in
-                rdwr.wr flow buf 0 (Cstruct.len raw) >>= fun () -> go state
+                rdwr.wr flow buf 0 (Cstruct.length raw) >>= fun () -> go state
             | None -> go state) in
       go state >>= fun state ->
       ctx.tls <- Some state ;

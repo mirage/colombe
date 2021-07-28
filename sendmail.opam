@@ -23,5 +23,6 @@ depends: [
   "logs"
   "emile" {>= "0.8" & with-test}
   "mrmime" {>= "0.3.2" & with-test}
+  "cstruct" {>= "6.0.0"}
   "alcotest" {with-test}
 ]
