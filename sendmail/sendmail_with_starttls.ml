@@ -344,8 +344,7 @@ module Make_with_tls (Value : VALUE) :
           else k_fiber state
       | `Data None -> fiber_write state resp
     and k_handshake state res =
-      let len = match res with
-        | `Len len -> len | `End -> 0 in
+      let len = match res with `Len len -> len | `End -> 0 in
       let raw = Cstruct.of_bytes buffer_with_tls ~off:0 ~len in
 
       match Tls.Engine.handle_tls state raw with
@@ -428,9 +427,7 @@ module Make_with_tls (Value : VALUE) :
                 }
           | None -> fiber_read data
         and k res =
-          let len = match res with
-            | `End -> 0
-            | `Len len -> len in
+          let len = match res with `End -> 0 | `Len len -> len in
           let raw = Cstruct.of_bytes ~off:0 ~len buffer_with_tls in
 
           match Tls.Engine.handle_tls state raw with
@@ -577,9 +574,10 @@ module Monad = State.Scheduler (Context_with_tls) (Value_with_tls)
 
 let properly_quit_and_fail ctx err =
   let open Monad in
-  reword_error (fun _ -> err) begin
-  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-  fail err end
+  reword_error
+    (fun _ -> err)
+    (let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+     fail err)
 
 let auth ctx mechanism info =
   let open Monad in
@@ -589,8 +587,7 @@ let auth ctx mechanism info =
   match mechanism with
   | Sendmail.PLAIN -> (
       let* code, txts =
-        send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code
-      in
+        send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code in
       match code with
       | 504 -> properly_quit_and_fail ctx `Unsupported_mechanism
       | 538 -> properly_quit_and_fail ctx `Encryption_required
@@ -616,8 +613,7 @@ let auth ctx mechanism info =
                 let payload =
                   Base64.encode_exn (Fmt.strf "\000%s\000%s" username password)
                 in
-                send ctx Value.Payload payload
-          in
+                send ctx Value.Payload payload in
           recv ctx Value.Code >>= function
           | 235, _txts -> return `Authenticated
           | 501, _txts -> properly_quit_and_fail ctx `Authentication_rejected
@@ -682,14 +678,11 @@ let m0 ctx config ?authentication ~domain sender recipients =
   then Error `STARTTLS_unavailable
   else
     let* _txts =
-      send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220
-    in
+      send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220 in
     Value_with_tls.starttls_as_client ctx config
     |> reword_error (fun err -> `Tls err)
     >>= fun () ->
-    let* txts =
-      send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250
-    in
+    let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
     let has_8bit_mime_transport_extension =
       has_8bit_mime_transport_extension txts in
     (match authentication with
@@ -704,8 +697,7 @@ let m0 ctx config ?authentication ~domain sender recipients =
       else [] in
     let* code, txts =
       send ctx Value.Mail_from (sender, parameters) >>= fun () ->
-      recv ctx Value.Code
-    in
+      recv ctx Value.Code in
     let rec go = function
       | [] ->
           send ctx Value.Data () >>= fun () ->

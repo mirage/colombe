@@ -154,7 +154,13 @@ let prompt :
     then
       let continue = function
         | `Len len -> go (off + len)
-        | `End -> Error { error= `End_of_input; buffer= decoder.buffer; committed= decoder.pos; } in
+        | `End ->
+            Error
+              {
+                error = `End_of_input;
+                buffer = decoder.buffer;
+                committed = decoder.pos;
+              } in
       Read
         {
           buffer = decoder.buffer;
