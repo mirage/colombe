@@ -343,7 +343,9 @@ module Make_with_tls (Value : VALUE) :
               }
           else k_fiber state
       | `Data None -> fiber_write state resp
-    and k_handshake state len =
+    and k_handshake state res =
+      let len = match res with
+        | `Len len -> len | `End -> 0 in
       let raw = Cstruct.of_bytes buffer_with_tls ~off:0 ~len in
 
       match Tls.Engine.handle_tls state raw with
@@ -395,9 +397,8 @@ module Make_with_tls (Value : VALUE) :
         let rec fiber_read = function
           | Some raw ->
               let len = min (Cstruct.length raw) len_0 in
-              Log.debug (fun m -> m "=> %S" (Cstruct.to_string raw)) ;
               Cstruct.blit_to_bytes raw 0 buffer_without_tls off_0 len ;
-              go_with_tls ctx (k_without_tls len) (Cstruct.shift raw len)
+              go_with_tls ctx (k_without_tls (`Len len)) (Cstruct.shift raw len)
           | None ->
               (* Even if data is empty, eof was not reached. *)
               Read
@@ -426,8 +427,11 @@ module Make_with_tls (Value : VALUE) :
                   len = Cstruct.length raw;
                 }
           | None -> fiber_read data
-        and k n =
-          let raw = Cstruct.of_bytes ~off:0 ~len:n buffer_with_tls in
+        and k res =
+          let len = match res with
+            | `End -> 0
+            | `Len len -> len in
+          let raw = Cstruct.of_bytes ~off:0 ~len buffer_with_tls in
 
           match Tls.Engine.handle_tls state raw with
           | Ok (`Ok state, `Response None, `Data data) ->
@@ -439,7 +443,7 @@ module Make_with_tls (Value : VALUE) :
           | Ok (`Eof, `Response resp, `Data data) ->
               ctx.tls <- None ;
               let rec go_to_eof = function
-                | Read { k; _ } -> k 0 (* emit end-of-stream *)
+                | Read { k; _ } -> k `End
                 | Write { k; buffer; off; len } ->
                     Write { k = go_to_eof <.> k; buffer; off; len }
                 | v -> v in
@@ -461,12 +465,12 @@ module Make_with_tls (Value : VALUE) :
         delayed_len ) ->
         let len = min delayed_len len_0 in
         Cstruct.blit_to_bytes delayed_data 0 buffer_without_tls off_0 len ;
-        go_with_tls ctx (k len) (Cstruct.shift delayed_data len)
+        go_with_tls ctx (k (`Len len)) (Cstruct.shift delayed_data len)
     | None, (Read _ as fiber), 0 -> fiber
     | None, Read { k; buffer; off; len }, delayed_len ->
         let len = min delayed_len len in
         Cstruct.blit_to_bytes delayed_data 0 buffer off len ;
-        go_with_tls ctx (k len) (Cstruct.shift delayed_data len)
+        go_with_tls ctx (k (`Len len)) (Cstruct.shift delayed_data len)
     | None, fiber, _ -> fiber
     | _, fiber, _ -> fiber
 
