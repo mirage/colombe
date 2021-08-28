@@ -229,8 +229,7 @@ let test_4 () =
       [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
       (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
-  | Error err ->
-      assert (`Authentication_required = err)
+  | Error err -> assert (`Authentication_required = err)
   | Ok _ -> Fmt.failwith "Should fail with [Encryption_required]"
 
 let test_5 () =

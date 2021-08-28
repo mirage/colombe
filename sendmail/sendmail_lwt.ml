@@ -20,10 +20,10 @@ let rdwr =
     Sigs.rd =
       (fun { ic; _ } bytes off len ->
         let open Lwt.Infix in
-        Lwt_scheduler.inj begin
-        Lwt_io.read_into ic bytes off len >>= function
-        | 0 -> Lwt.return `End
-        | len -> Lwt.return (`Len len) end);
+        Lwt_scheduler.inj
+          (Lwt_io.read_into ic bytes off len >>= function
+           | 0 -> Lwt.return `End
+           | len -> Lwt.return (`Len len)));
     wr =
       (fun { oc; _ } bytes off len ->
         let res =
