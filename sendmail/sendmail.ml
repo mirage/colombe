@@ -109,10 +109,31 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Monad = State.Scheduler (State.Context) (Value)
 
+let run :
+    type s flow.
+    s impl ->
+    (flow, s) rdwr ->
+    flow ->
+    ('a, 'err) t ->
+    (('a, 'err) result, s) io =
+ fun { bind; return } rdwr flow m ->
+  let ( >>= ) = bind in
+
+  let rec go = function
+    | Read { buffer; off; len; k } ->
+        rdwr.rd flow buffer off len >>= fun v ->
+        go (k v)
+    | Write { buffer; off; len; k } ->
+        rdwr.wr flow buffer off len >>= fun () -> go (k len)
+    | Return v -> return (Ok v)
+    | Error err -> return (Error err : ('a, 'err) result) in
+  go m
+
 let properly_quit_and_fail ctx err =
   let open Monad in
-  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-  fail err
+  reword_error (fun _ -> err) begin
+  send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 >>= fun _ ->
+  fail err end
 
 let auth ctx mechanism info =
   let open Monad in
@@ -236,28 +257,6 @@ let m1 ctx =
   let* _txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.PP_250 in
   let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
   return ()
-
-let run :
-    type s flow.
-    s impl ->
-    (flow, s) rdwr ->
-    flow ->
-    ('a, 'err) t ->
-    (('a, 'err) result, s) io =
- fun { bind; return } rdwr flow m ->
-  let ( >>= ) = bind in
-
-  let rec go = function
-    | Read { buffer; off; len; k } ->
-        rdwr.rd flow buffer off len >>= fun len ->
-        Log.debug (fun m -> m "[rd]>>> %S" (Bytes.sub_string buffer off len)) ;
-        go (k len)
-    | Write { buffer; off; len; k } ->
-        Log.debug (fun m -> m "[wr]>>> %S" (String.sub buffer off len)) ;
-        rdwr.wr flow buffer off len >>= fun () -> go (k len)
-    | Return v -> return (Ok v)
-    | Error err -> return (Error err : ('a, 'err) result) in
-  go m
 
 let sendmail ({ bind; return } as impl) rdwr flow context ?authentication
     ~domain sender recipients mail =
