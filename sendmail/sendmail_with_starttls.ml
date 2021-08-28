@@ -577,8 +577,9 @@ module Monad = State.Scheduler (Context_with_tls) (Value_with_tls)
 
 let properly_quit_and_fail ctx err =
   let open Monad in
+  reword_error (fun _ -> err) begin
   let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-  Error err
+  fail err end
 
 let auth ctx mechanism info =
   let open Monad in
