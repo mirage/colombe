@@ -1,5 +1,5 @@
 type ('a, 'err) t =
-  | Read of { buffer : bytes; off : int; len : int; k : int -> ('a, 'err) t }
+  | Read of { buffer : bytes; off : int; len : int; k : [ `End | `Len of int ] -> ('a, 'err) t }
   | Write of { buffer : string; off : int; len : int; k : int -> ('a, 'err) t }
   | Return of 'a
   | Error of 'err
