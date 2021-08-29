@@ -79,11 +79,11 @@ struct
   let rec go ~f m len =
     match m len with
     | Return v -> f v
-    | Read { k; off; len; buffer } ->
-        let rec k0 = function `End -> go ~f k1 0 | `Len len -> go ~f k1 len
-        and k1 = function 0 -> k `End | len -> k (`Len len) in
-        Read { k = k0; off; len; buffer }
-    | Write { k; off; len; buffer } -> Write { k = go ~f k; off; len; buffer }
+    | Read { k; off; len; buffer } -> Read { k = go ~f k; off; len; buffer }
+    | Write { k; off; len; buffer } ->
+        let k0 = function `End -> k 0 | `Len len -> k len in
+        let k1 = function 0 -> go ~f k0 `End | len -> go ~f k0 (`Len len) in
+        Write { k = k1; off; len; buffer }
     | Error err -> Error err
 
   let bind : ('a, 'err) t -> f:('a -> ('b, 'err) t) -> ('b, 'err) t =
@@ -91,11 +91,11 @@ struct
     match m with
     | Return v -> f v
     | Error err -> Error err
-    | Read { k; off; len; buffer } ->
-        let rec k0 = function `End -> go ~f k1 0 | `Len len -> go ~f k1 len
-        and k1 = function 0 -> k `End | len -> k (`Len len) in
-        Read { k = k0; off; len; buffer }
-    | Write { k; off; len; buffer } -> Write { k = go ~f k; off; len; buffer }
+    | Read { k; off; len; buffer } -> Read { k = go ~f k; off; len; buffer }
+    | Write { k; off; len; buffer } ->
+        let k0 = function `End -> k 0 | `Len len -> k len in
+        let k1 = function 0 -> go ~f k0 `End | len -> go ~f k0 (`Len len) in
+        Write { k = k1; off; len; buffer }
 
   let ( let* ) m f = bind m ~f
 
