@@ -42,7 +42,7 @@ type ('v, 'err) state =
       buffer : Bytes.t;
       off : int;
       len : int;
-      continue : int -> ('v, 'err) state;
+      continue : [ `End | `Len of int ] -> ('v, 'err) state;
     }
   | Error of 'err info
 
@@ -152,12 +152,21 @@ let prompt :
             (* XXX(dinosaure): we make a new decoder here and we did __not__ set [decoder.max] owned by end-user,
                and this is exactly what we want. *)
     then
+      let continue = function
+        | `Len len -> go (off + len)
+        | `End ->
+            Error
+              {
+                error = `End_of_input;
+                buffer = decoder.buffer;
+                committed = decoder.pos;
+              } in
       Read
         {
           buffer = decoder.buffer;
           off;
           len = Bytes.length decoder.buffer - off;
-          continue = (fun len -> go (off + len));
+          continue;
         }
     else (
       decoder.max <- off ;

@@ -343,7 +343,8 @@ module Make_with_tls (Value : VALUE) :
               }
           else k_fiber state
       | `Data None -> fiber_write state resp
-    and k_handshake state len =
+    and k_handshake state res =
+      let len = match res with `Len len -> len | `End -> 0 in
       let raw = Cstruct.of_bytes buffer_with_tls ~off:0 ~len in
 
       match Tls.Engine.handle_tls state raw with
@@ -395,9 +396,8 @@ module Make_with_tls (Value : VALUE) :
         let rec fiber_read = function
           | Some raw ->
               let len = min (Cstruct.length raw) len_0 in
-              Log.debug (fun m -> m "=> %S" (Cstruct.to_string raw)) ;
               Cstruct.blit_to_bytes raw 0 buffer_without_tls off_0 len ;
-              go_with_tls ctx (k_without_tls len) (Cstruct.shift raw len)
+              go_with_tls ctx (k_without_tls (`Len len)) (Cstruct.shift raw len)
           | None ->
               (* Even if data is empty, eof was not reached. *)
               Read
@@ -426,8 +426,9 @@ module Make_with_tls (Value : VALUE) :
                   len = Cstruct.length raw;
                 }
           | None -> fiber_read data
-        and k n =
-          let raw = Cstruct.of_bytes ~off:0 ~len:n buffer_with_tls in
+        and k res =
+          let len = match res with `End -> 0 | `Len len -> len in
+          let raw = Cstruct.of_bytes ~off:0 ~len buffer_with_tls in
 
           match Tls.Engine.handle_tls state raw with
           | Ok (`Ok state, `Response None, `Data data) ->
@@ -439,7 +440,7 @@ module Make_with_tls (Value : VALUE) :
           | Ok (`Eof, `Response resp, `Data data) ->
               ctx.tls <- None ;
               let rec go_to_eof = function
-                | Read { k; _ } -> k 0 (* emit end-of-stream *)
+                | Read { k; _ } -> k `End
                 | Write { k; buffer; off; len } ->
                     Write { k = go_to_eof <.> k; buffer; off; len }
                 | v -> v in
@@ -461,12 +462,12 @@ module Make_with_tls (Value : VALUE) :
         delayed_len ) ->
         let len = min delayed_len len_0 in
         Cstruct.blit_to_bytes delayed_data 0 buffer_without_tls off_0 len ;
-        go_with_tls ctx (k len) (Cstruct.shift delayed_data len)
+        go_with_tls ctx (k (`Len len)) (Cstruct.shift delayed_data len)
     | None, (Read _ as fiber), 0 -> fiber
     | None, Read { k; buffer; off; len }, delayed_len ->
         let len = min delayed_len len in
         Cstruct.blit_to_bytes delayed_data 0 buffer off len ;
-        go_with_tls ctx (k len) (Cstruct.shift delayed_data len)
+        go_with_tls ctx (k (`Len len)) (Cstruct.shift delayed_data len)
     | None, fiber, _ -> fiber
     | _, fiber, _ -> fiber
 
@@ -573,8 +574,10 @@ module Monad = State.Scheduler (Context_with_tls) (Value_with_tls)
 
 let properly_quit_and_fail ctx err =
   let open Monad in
-  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-  Error err
+  reword_error
+    (fun _ -> err)
+    (let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+     fail err)
 
 let auth ctx mechanism info =
   let open Monad in
@@ -584,8 +587,7 @@ let auth ctx mechanism info =
   match mechanism with
   | Sendmail.PLAIN -> (
       let* code, txts =
-        send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code
-      in
+        send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code in
       match code with
       | 504 -> properly_quit_and_fail ctx `Unsupported_mechanism
       | 538 -> properly_quit_and_fail ctx `Encryption_required
@@ -611,8 +613,7 @@ let auth ctx mechanism info =
                 let payload =
                   Base64.encode_exn (Fmt.strf "\000%s\000%s" username password)
                 in
-                send ctx Value.Payload payload
-          in
+                send ctx Value.Payload payload in
           recv ctx Value.Code >>= function
           | 235, _txts -> return `Authenticated
           | 501, _txts -> properly_quit_and_fail ctx `Authentication_rejected
@@ -677,14 +678,11 @@ let m0 ctx config ?authentication ~domain sender recipients =
   then Error `STARTTLS_unavailable
   else
     let* _txts =
-      send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220
-    in
+      send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220 in
     Value_with_tls.starttls_as_client ctx config
     |> reword_error (fun err -> `Tls err)
     >>= fun () ->
-    let* txts =
-      send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250
-    in
+    let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
     let has_8bit_mime_transport_extension =
       has_8bit_mime_transport_extension txts in
     (match authentication with
@@ -699,8 +697,7 @@ let m0 ctx config ?authentication ~domain sender recipients =
       else [] in
     let* code, txts =
       send ctx Value.Mail_from (sender, parameters) >>= fun () ->
-      recv ctx Value.Code
-    in
+      recv ctx Value.Code in
     let rec go = function
       | [] ->
           send ctx Value.Data () >>= fun () ->

@@ -29,7 +29,7 @@ let rdwr_from_flows inputs outputs =
   let outputs = ref (List.map put_crlf outputs) in
   let read () bytes off len =
     match !inputs with
-    | [] -> Unix_scheduler.inj 0
+    | [] -> Unix_scheduler.inj `End
     | x :: r ->
         let len = min (String.length x) len in
         Bytes.blit_string x 0 bytes off len ;
@@ -37,7 +37,7 @@ let rdwr_from_flows inputs outputs =
         if len = String.length x
         then inputs := r
         else inputs := String.sub x len (String.length x - len) :: r ;
-        Unix_scheduler.inj len in
+        Unix_scheduler.inj (`Len len) in
   let rec write () bytes off len =
     match !outputs with
     | [] -> Fmt.failwith "Unexpected output: %S" (String.sub bytes off len)
@@ -211,7 +211,7 @@ let test_3 () =
 let test_4 () =
   Alcotest.test_case "authentication required" `Quick @@ fun () ->
   let ctx = Colombe.State.Context.make () in
-  let rdwr, is_empty =
+  let rdwr, _is_empty =
     rdwr_from_flows
       [
         "220 smtp.gmail.com ESMTP - gsmtp";
@@ -229,9 +229,7 @@ let test_4 () =
       [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
       (fun () -> unix.return None) in
   match Unix_scheduler.prj fiber with
-  | Error err ->
-      is_empty () ;
-      assert (`Authentication_required = err)
+  | Error err -> assert (`Authentication_required = err)
   | Ok _ -> Fmt.failwith "Should fail with [Encryption_required]"
 
 let test_5 () =
@@ -495,6 +493,44 @@ let test_9 () =
   | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
   | Ok _ -> is_empty ()
 
+let test_10 () =
+  Alcotest.test_case "unproperly quit" `Quick @@ fun () ->
+  let ctx = Colombe.State.Context.make () in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [
+        "220 smtp.gmail.com ESMTP - gsmtp";
+        "250-smtp.gmail.com at your service, [8.8.8.8]";
+        "250-SIZE 0";
+        "250-AUTH LOGIN PLAIN";
+        "250-ENHANCEDSTATUSCODES";
+        "250 CHUNKING";
+        "334 ";
+        "501 Authentication rejected!";
+      ]
+      [
+        "EHLO gmail.com";
+        "AUTH PLAIN";
+        Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar");
+        "QUIT";
+      ] in
+  let authentication =
+    { Sendmail.mechanism = PLAIN; username = "romain"; password = "foobar" }
+  in
+  let fiber =
+    Sendmail.sendmail unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
+      ~authentication
+      (fun () -> unix.return None) in
+  match Unix_scheduler.prj fiber with
+  | Error err ->
+      is_empty () ;
+      Fmt.epr ">>> %a.\n%!" Sendmail.pp_error err ;
+      assert (err = `Authentication_rejected)
+  | Ok _ -> Fmt.failwith "Should fail with [Authentication_rejected]"
+
 let () =
   Alcotest.run "sendmail"
     [
@@ -510,5 +546,6 @@ let () =
           test_7 ();
           test_8 ();
           test_9 ();
+          test_10 ();
         ] );
     ]
