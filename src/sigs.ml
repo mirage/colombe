@@ -12,7 +12,7 @@ type 't impl = {
 }
 
 type ('flow, 's) rdwr = {
-  rd : 'flow -> bytes -> int -> int -> (int, 's) io;
+  rd : 'flow -> bytes -> int -> int -> ([ `End | `Len of int ], 's) io;
   wr : 'flow -> string -> int -> int -> (unit, 's) io;
 }
 

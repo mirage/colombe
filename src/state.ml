@@ -1,7 +1,12 @@
 let ( <.> ) f g x = f (g x)
 
 type ('a, 'err) t =
-  | Read of { buffer : bytes; off : int; len : int; k : int -> ('a, 'err) t }
+  | Read of {
+      buffer : bytes;
+      off : int;
+      len : int;
+      k : [ `End | `Len of int ] -> ('a, 'err) t;
+    }
   | Write of { buffer : string; off : int; len : int; k : int -> ('a, 'err) t }
   | Return of 'a
   | Error of 'err
@@ -75,7 +80,10 @@ struct
     match m len with
     | Return v -> f v
     | Read { k; off; len; buffer } -> Read { k = go ~f k; off; len; buffer }
-    | Write { k; off; len; buffer } -> Write { k = go ~f k; off; len; buffer }
+    | Write { k; off; len; buffer } ->
+        let k0 = function `End -> k 0 | `Len len -> k len in
+        let k1 = function 0 -> go ~f k0 `End | len -> go ~f k0 (`Len len) in
+        Write { k = k1; off; len; buffer }
     | Error err -> Error err
 
   let bind : ('a, 'err) t -> f:('a -> ('b, 'err) t) -> ('b, 'err) t =
@@ -84,7 +92,10 @@ struct
     | Return v -> f v
     | Error err -> Error err
     | Read { k; off; len; buffer } -> Read { k = go ~f k; off; len; buffer }
-    | Write { k; off; len; buffer } -> Write { k = go ~f k; off; len; buffer }
+    | Write { k; off; len; buffer } ->
+        let k0 = function `End -> k 0 | `Len len -> k len in
+        let k1 = function 0 -> go ~f k0 `End | len -> go ~f k0 (`Len len) in
+        Write { k = k1; off; len; buffer }
 
   let ( let* ) m f = bind m ~f
 

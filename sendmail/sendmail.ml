@@ -109,10 +109,31 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module Monad = State.Scheduler (State.Context) (Value)
 
+let run :
+    type s flow.
+    s impl ->
+    (flow, s) rdwr ->
+    flow ->
+    ('a, 'err) t ->
+    (('a, 'err) result, s) io =
+ fun { bind; return } rdwr flow m ->
+  let ( >>= ) = bind in
+
+  let rec go = function
+    | Read { buffer; off; len; k } ->
+        rdwr.rd flow buffer off len >>= fun v -> go (k v)
+    | Write { buffer; off; len; k } ->
+        rdwr.wr flow buffer off len >>= fun () -> go (k len)
+    | Return v -> return (Ok v)
+    | Error err -> return (Error err : ('a, 'err) result) in
+  go m
+
 let properly_quit_and_fail ctx err =
   let open Monad in
-  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-  fail err
+  reword_error
+    (fun _ -> err)
+    ( send ctx Value.Quit () >>= fun () ->
+      recv ctx Value.PP_221 >>= fun _ -> fail err )
 
 let auth ctx mechanism info =
   let open Monad in
@@ -122,8 +143,7 @@ let auth ctx mechanism info =
   match mechanism with
   | Value.PLAIN -> (
       let* code, txts =
-        send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code
-      in
+        send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code in
       match code with
       | 504 -> properly_quit_and_fail ctx `Unsupported_mechanism
       | 538 -> properly_quit_and_fail ctx `Encryption_required
@@ -149,8 +169,7 @@ let auth ctx mechanism info =
                 let payload =
                   Base64.encode_exn (Fmt.strf "\000%s\000%s" username password)
                 in
-                send ctx Value.Payload payload
-          in
+                send ctx Value.Payload payload in
           recv ctx Value.Code >>= function
           | 235, _txts -> return `Authenticated
           | 501, _txts -> properly_quit_and_fail ctx `Authentication_rejected
@@ -217,8 +236,7 @@ let m0 ctx ?authentication ~domain sender recipients =
     else [] in
   let* code, txts =
     send ctx Value.Mail_from (sender, parameters) >>= fun () ->
-    recv ctx Value.Code
-  in
+    recv ctx Value.Code in
   let rec go = function
     | [] ->
         send ctx Value.Data () >>= fun () ->
@@ -236,28 +254,6 @@ let m1 ctx =
   let* _txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.PP_250 in
   let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
   return ()
-
-let run :
-    type s flow.
-    s impl ->
-    (flow, s) rdwr ->
-    flow ->
-    ('a, 'err) t ->
-    (('a, 'err) result, s) io =
- fun { bind; return } rdwr flow m ->
-  let ( >>= ) = bind in
-
-  let rec go = function
-    | Read { buffer; off; len; k } ->
-        rdwr.rd flow buffer off len >>= fun len ->
-        Log.debug (fun m -> m "[rd]>>> %S" (Bytes.sub_string buffer off len)) ;
-        go (k len)
-    | Write { buffer; off; len; k } ->
-        Log.debug (fun m -> m "[wr]>>> %S" (String.sub buffer off len)) ;
-        rdwr.wr flow buffer off len >>= fun () -> go (k len)
-    | Return v -> return (Ok v)
-    | Error err -> return (Error err : ('a, 'err) result) in
-  go m
 
 let sendmail ({ bind; return } as impl) rdwr flow context ?authentication
     ~domain sender recipients mail =

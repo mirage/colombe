@@ -33,7 +33,7 @@ type ('v, 'err) state =
       buffer : bytes;
       off : int;
       len : int;
-      continue : int -> ('v, 'err) state;
+      continue : [ `Len of int | `End ] -> ('v, 'err) state;
     }
   | Error of 'err info
 
