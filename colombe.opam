@@ -16,13 +16,13 @@ build: [
 
 depends: [
   "ocaml" {>= "4.03.0"}
-  "dune" {>= "1.8.0"}
-  "fmt"
-  "ipaddr" {>= "2.9.0"}
+  "dune" {>= "2.0.0"}
+  "fmt" {>= "0.8.9"}
+  "ipaddr" {>= "3.0.0"}
   "angstrom" {>= "0.14.0"}
   "ocaml-syntax-shims"
   "alcotest" {with-test}
-  "crowbar" {with-test}
+  "crowbar" {>= "0.2" & with-test}
 ]
 depopts: [ "emile" ]
 conflicts: [ "emile" {< "0.8"} ]
