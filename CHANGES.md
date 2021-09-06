@@ -1,3 +1,8 @@
+### v0.5.0 2021-08-30 Paris (France)
+
+- Use `Cstruct.length` instead of `Cstruct.len` (@dinosaure, #45)
+- Let the user to emit the end of the stream (spotted by @jsthomas, @dinosaure, review @mikonieminen, #47)
+
 ### v0.4.2 2021-07-26 Paris (France)
 
 - Add `Path.of_string_exn` (@dinosaure, #40)
