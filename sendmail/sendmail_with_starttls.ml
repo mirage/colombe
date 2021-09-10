@@ -1,27 +1,158 @@
+open Rresult
 open Colombe.Sigs
 open Colombe.State
 open Colombe
 
 let ( <.> ) f g x = f (g x)
 
-module Context_with_tls = struct
-  type t = { context : Context.t; mutable tls : Tls.Engine.state option }
+module type FLOW = sig
+  type t
 
-  type encoder = t
+  type error
 
-  type decoder = t
+  type +'a io
 
-  let pp ppf t =
-    Fmt.pf ppf "{ @[<hov>context= @[<hov>%a@];@ tls= #state@] }" Context.pp
-      t.context
+  val read :
+    t -> bytes -> int -> int -> ([ `End | `Len of int ], error) result io
 
-  let encoder x = x
+  val fully_write : t -> string -> int -> int -> (unit, error) result io
 
-  let decoder x = x
+  val close : t -> unit io
 
-  let make () = { context = Context.make (); tls = None }
+  val bind : 'a io -> ('a -> 'b io) -> 'b io
 
-  let tls { tls; _ } = match tls with Some _ -> true | _ -> false
+  val map : ('a -> 'b) -> 'a io -> 'b io
+
+  val return : 'a -> 'a io
+end
+
+module TLS (Flow : FLOW) = struct
+  type error =
+    | Alert of Tls.Packet.alert_type
+    | Failure of Tls.Engine.failure
+    | Flow_error of Flow.error
+    | Closed
+
+  let ( >>= ) = Flow.bind
+
+  let ( >>| ) x f = Flow.map f x
+
+  let return = Flow.return
+
+  type t = {
+    socket : Flow.t;
+    mutable state : [ `Active of Tls.Engine.state | `Eof | `Error of error ];
+    mutable linger : Cstruct.t list;
+  }
+
+  let fully_write socket ({ Cstruct.len; _ } as cs) =
+    Flow.fully_write socket (Cstruct.to_string cs) 0 len
+    >>| R.reword_error (fun err -> Flow_error err)
+
+  let read socket =
+    let buf = Bytes.create 0x1000 in
+    Flow.read socket buf 0 (Bytes.length buf) >>= function
+    | Ok `End -> return `Eof
+    | Ok (`Len len) -> return (`Data (Cstruct.of_bytes ~off:0 ~len buf))
+    | Error err -> return (`Error (Flow_error err))
+
+  let check_write flow (res : _ result) =
+    (match (flow.state, res) with
+    | `Active _, Error err ->
+        flow.state <- `Error err ;
+        Flow.close flow.socket
+    | _ -> return ())
+    >>| fun () ->
+    match (res : _ result) with Ok () -> Ok () | Error err -> Error err
+
+  let read_react flow =
+    let handle tls buf =
+      match Tls.Engine.handle_tls tls buf with
+      | Ok (res, `Response resp, `Data data) ->
+          flow.state <-
+            (match res with
+            | `Ok tls -> `Active tls
+            | `Eof -> `Eof
+            | `Alert alert -> `Error (Alert alert)) ;
+          (match resp with
+          | None -> return (Ok ())
+          | Some buf -> fully_write flow.socket buf >>= check_write flow)
+          >>= fun _ ->
+          (match res with `Ok _ -> return () | _ -> Flow.close flow.socket)
+          >>= fun () -> return (`Ok data)
+      | Error (fail, `Response resp) ->
+          let reason = `Error (Failure fail) in
+          flow.state <- reason ;
+          fully_write flow.socket resp |> fun _ ->
+          Flow.close flow.socket >>| fun () -> reason in
+    match flow.state with
+    | (`Eof | `Error _) as v -> return v
+    | `Active _ -> (
+        read flow.socket >>= function
+        | (`Eof | `Error _) as v ->
+            flow.state <- v ;
+            return v
+        | `Data buf ->
+        match flow.state with
+        | `Active tls -> handle tls buf
+        | (`Eof | `Error _) as v -> return v)
+
+  let rec read flow =
+    match flow.linger with
+    | [] -> (
+        read_react flow >>= function
+        | `Ok None -> read flow
+        | `Ok (Some buf) -> return (Result.Ok (`Data buf))
+        | `Eof -> return (Result.Ok `Eof)
+        | `Error err -> return (Result.Error err))
+    | bufs ->
+        flow.linger <- [] ;
+        return (Ok (`Data (Cstruct.concat (List.rev bufs))))
+
+  let writev flow css =
+    match flow.state with
+    | `Eof -> return (Result.Error Closed)
+    | `Error err -> return (Result.Error err)
+    | `Active tls ->
+    match Tls.Engine.send_application_data tls css with
+    | Some (tls, answer) ->
+        flow.state <- `Active tls ;
+        fully_write flow.socket answer >>= check_write flow
+    | None -> assert false
+  (* XXX(dinosaure): seems safe! *)
+
+  let write flow cs = writev flow [ cs ]
+
+  let close flow =
+    match flow.state with
+    | `Active tls ->
+        flow.state <- `Eof ;
+        let _, buf = Tls.Engine.send_close_notify tls in
+        fully_write flow.socket buf >>= fun _ -> return ()
+    | _ -> return ()
+
+  let rec drain_handshake flow =
+    match flow.state with
+    | `Active tls when not (Tls.Engine.handshake_in_progress tls) ->
+        return (Ok flow)
+    | _ -> (
+        read_react flow >>= function
+        | `Ok (Some mbuf) ->
+            flow.linger <- mbuf :: flow.linger ;
+            drain_handshake flow
+        | `Ok None -> drain_handshake flow
+        | `Error err -> return (Result.Error err)
+        | `Eof -> return (Result.Error Closed))
+
+  let init_client cfg socket =
+    let tls, init = Tls.Engine.client cfg in
+    let flow = { socket; state = `Active tls; linger = [] } in
+    fully_write socket init >>= fun _ -> drain_handshake flow
+
+  let init_server cfg socket =
+    let flow =
+      { socket; state = `Active (Tls.Engine.server cfg); linger = [] } in
+    drain_handshake flow
 end
 
 let src =
@@ -159,6 +290,86 @@ module Value = struct
     go (Reply.Decoder.response decoder)
 end
 
+module Flow = struct
+  type t = unit
+
+  type error = |
+
+  type +'a io = { run : 'r. ('a -> ('r, error) State.t) -> ('r, error) State.t }
+
+  let bind : 'a io -> ('a -> 'b io) -> 'b io =
+   fun { run = t } f -> { run = (fun k -> t (fun x -> (f x).run k)) }
+
+  let return x = { run = (fun k -> k x) }
+
+  let map f t = bind t (fun x -> return (f x))
+
+  let fully_write () buffer off len =
+    {
+      run =
+        (fun k1 ->
+          let rec k0 off len len' =
+            if len - len' = 0
+            then k1 (Ok ())
+            else
+              let off = off + len' and len = len - len' in
+              Write { buffer; off; len; k = k0 off len } in
+          Write { buffer; off; len; k = k0 off len });
+    }
+
+  let read () buffer off len =
+    {
+      run =
+        (fun k1 ->
+          let k0 = function
+            | `End -> k1 (Ok `End)
+            | `Len len -> k1 (Ok (`Len len)) in
+          Read { buffer; off; len; k = k0 });
+    }
+
+  let close () = { run = (fun k -> k ()) }
+
+  let rec join : (('a, 'err) result, error) State.t -> ('a, 'err) State.t =
+    function
+    | Write { k; buffer; off; len } ->
+        Write { k = join <.> k; buffer; off; len }
+    | Read { k; buffer; off; len } -> Read { k = join <.> k; buffer; off; len }
+    | Return (Ok v) -> Return v
+    | Return (Error err) -> Error err
+    | Error _ -> .
+end
+
+module StartTLS = TLS (Flow)
+
+module Context_with_tls = struct
+  type t = {
+    context : Context.t;
+    queue : (char, Bigarray.int8_unsigned_elt) Ke.Rke.t;
+    mutable tls : StartTLS.t option;
+  }
+
+  type encoder = t
+
+  type decoder = t
+
+  let pp ppf t =
+    Fmt.pf ppf "{ @[<hov>context= @[<hov>%a@];@ tls= #state@] }" Context.pp
+      t.context
+
+  let encoder x = x
+
+  let decoder x = x
+
+  let make () =
+    {
+      context = Context.make ();
+      queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char;
+      tls = None;
+    }
+
+  let tls { tls; _ } = match tls with Some _ -> true | _ -> false
+end
+
 module Value_without_tls = struct
   include Value
 
@@ -193,7 +404,8 @@ module type S = sig
   type error =
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
 
   val pp_error : error Fmt.t
 
@@ -214,17 +426,20 @@ module type S = sig
   val decode : decoder -> 'a recv -> ('a, [> error ]) State.t
 end
 
-module Make_with_tls (Value : VALUE) :
-  S
-    with type 'x send = 'x Value.send
-     and type 'x recv = 'x Value.recv
-     and type encoder = Context_with_tls.encoder
-     and type decoder = Context_with_tls.decoder
-     and type Value.error = Value.error = struct
+module Make_with_tls (Value : VALUE) =
+(* :
+   S
+     with type 'x send = 'x Value.send
+      and type 'x recv = 'x Value.recv
+      and type encoder = Context_with_tls.encoder
+      and type decoder = Context_with_tls.decoder
+      and type Value.error = Value.error *)
+struct
   type error =
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
 
   type encoder = Context_with_tls.t
 
@@ -237,332 +452,115 @@ module Make_with_tls (Value : VALUE) :
     | `Tls_failure err ->
         Fmt.pf ppf "TLS failure: %s"
           (Tls.Packet.alert_type_to_string (Tls.Engine.alert_of_failure err))
+    | `Tls_closed -> Fmt.string ppf "TLS closed by peer"
 
   type 'x send = 'x Value.send
 
   type 'x recv = 'x Value.recv
 
-  let only_write_tls = function
-    | `Response (Some raw) ->
-        let rec k raw n =
-          let raw = Cstruct.shift raw n in
+  let pipe :
+      type r.
+      _ ->
+      _ ->
+      (r, [> error ]) State.t ->
+      _ ->
+      ((r, [> error ]) result, Flow.error) State.t =
+   fun tls queue fiber -> function
+    | Ok `Eof -> (
+        match fiber with
+        | Read { k; _ } -> k `End |> State.to_result
+        | Write { k; buffer; off; len } -> (
+            let cs = Cstruct.of_string buffer ~off ~len in
+            let { Flow.run } = StartTLS.write tls cs in
+            run @@ function
+            | Ok () -> k len |> State.to_result
+            | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
+            | Error (StartTLS.Failure failure) ->
+                Return (Error (`Tls_failure failure))
+            | Error (StartTLS.Flow_error _) -> .
+            | Error StartTLS.Closed -> Return (Error `Tls_closed))
+        | Return v -> Return (Ok v)
+        | Error err -> Return (Error err))
+    | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
+    | Error (StartTLS.Failure failure) -> Return (Error (`Tls_failure failure))
+    | Error (StartTLS.Flow_error _) -> .
+    | Error StartTLS.Closed -> Return (Error `Tls_closed)
+    | Ok (`Data cs) -> (
+        let blit src src_off dst dst_off len =
+          let dst = Cstruct.of_bigarray dst ~off:dst_off ~len in
+          Cstruct.blit src src_off dst 0 len in
+        Ke.Rke.N.push queue ~blit ~length:Cstruct.length cs ;
 
-          (* XXX(dinosaure): write until raw is non-empty. *)
-          if Cstruct.length raw = 0
-          then Return ()
-          else
-            Write
-              {
-                k = k raw;
-                buffer = Cstruct.to_string raw;
-                off = 0;
-                len = Cstruct.length raw;
-              } in
-        Write
-          {
-            k = k raw;
-            buffer = Cstruct.to_string raw;
-            off = 0;
-            len = Cstruct.length raw;
-          }
-    | `Response None -> Return ()
-
-  let rec go_to_failure failure = function
-    | Read _ | Return _ | Error _ -> Error (`Tls_failure failure)
-    | Write { k; buffer; off; len } ->
-        Write { k = go_to_failure failure <.> k; buffer; off; len }
-
-  let rec go_to_alert alert = function
-    | Return _ | Error _ -> Error (`Tls_alert alert)
-    | Write { k; buffer; off; len } ->
-        Write { k = go_to_alert alert <.> k; buffer; off; len }
-    | Read { k; buffer; off; len } ->
-        Read { k = go_to_alert alert <.> k; buffer; off; len }
-
-  let handle_handshake ctx state k_fiber =
-    let buffer_with_tls = Bytes.create 0x1000 in
-
-    let rec fiber_write state = function
-      | `Response (Some raw) ->
-          let rec k raw n =
-            let raw = Cstruct.shift raw n in
-
-            (* XXX(dinosaure): write until raw is non-empty. *)
-            if Cstruct.length raw = 0
-            then
-              if Tls.Engine.handshake_in_progress state
-              then
-                Read
-                  {
-                    k = k_handshake state;
-                    buffer = buffer_with_tls;
-                    off = 0;
-                    len = 0x1000;
-                  }
-              else k_fiber state
-            else
-              Write
-                {
-                  k = k raw;
-                  buffer = Cstruct.to_string raw;
-                  off = 0;
-                  len = Cstruct.length raw;
-                } in
-          Write
-            {
-              k = k raw;
-              buffer = Cstruct.to_string raw;
-              off = 0;
-              len = Cstruct.length raw;
-            }
-      | `Response None -> k_fiber state
-    and fiber_read state resp = function
-      | `Data (Some raw) ->
-          Log.debug (fun m -> m "~> %S" (Cstruct.to_string raw)) ;
-          (* XXX(dinosaure): should never occur while handshake! *)
-          let buffer =
-            ctx.Context_with_tls.context.Context.decoder.Decoder.buffer in
-          let max = ctx.Context_with_tls.context.Context.decoder.Decoder.max in
-          let len = min (Bytes.length buffer - max) (Cstruct.length raw) in
-          if len < Cstruct.length raw
-          then Fmt.failwith "Read buffer is full and TLS handshake is not done" ;
-          (* TODO: this case is when, while handshake, we receive much more data
-             that what we can store. We can not consume them because handshake is
-             not done. But to be clear, this case should __never__ appear. *)
-          Cstruct.blit_to_bytes raw 0 buffer max len ;
-          ctx.Context_with_tls.context.Context.decoder.Decoder.max <- max + len ;
-
-          if Tls.Engine.handshake_in_progress state
-          then
-            Read
-              {
-                k = k_handshake state;
-                buffer = buffer_with_tls;
-                off = 0;
-                len = 0x1000;
-              }
-          else k_fiber state
-      | `Data None -> fiber_write state resp
-    and k_handshake state res =
-      let len = match res with `Len len -> len | `End -> 0 in
-      let raw = Cstruct.of_bytes buffer_with_tls ~off:0 ~len in
-
-      match Tls.Engine.handle_tls state raw with
-      | Ok (`Ok state, resp, data) -> fiber_read state resp data
-      | Ok (`Eof, _resp, _data) ->
-          Fmt.failwith "Reach End-of-stream while handshake"
-      | Error (failure, `Response resp) ->
-          (go_to_failure failure <.> only_write_tls) (`Response (Some resp))
-      | Ok (`Alert alert, resp, _data) ->
-          (go_to_alert alert <.> only_write_tls) resp in
-
-    Read
-      { k = k_handshake state; buffer = buffer_with_tls; off = 0; len = 0x1000 }
-
-  let rec go_with_tls ctx fiber delayed_data =
-    match (ctx.Context_with_tls.tls, fiber, Cstruct.length delayed_data) with
-    | Some state, fiber, _ when not (Tls.Engine.can_handle_appdata state) ->
-        let k state =
-          ctx.tls <- Some state ;
-          go_with_tls ctx fiber delayed_data in
-        handle_handshake ctx state k
-    | Some state, Write { k; buffer; off; len }, _ -> (
-        let raw = Cstruct.of_string ~off ~len buffer in
-        Log.debug (fun m -> m "<= %S" (Cstruct.to_string raw)) ;
-        match Tls.Engine.send_application_data state [ raw ] with
-        | Some (state, raw) ->
-            let k n =
-              ctx.tls <- Some state ;
-              go_with_tls ctx (k n) delayed_data in
-            Write
-              {
-                k;
-                buffer = Cstruct.to_string raw;
-                off = 0;
-                len = Cstruct.length raw;
-              }
-        | None -> k len)
-    | ( Some state,
-        Read
-          {
-            k = k_without_tls;
-            buffer = buffer_without_tls;
-            off = off_0;
-            len = len_0;
-          },
-        0 ) ->
-        let buffer_with_tls = Bytes.make 0x1000 '\000' in
-
-        let rec fiber_read = function
-          | Some raw ->
-              let len = min (Cstruct.length raw) len_0 in
-              Cstruct.blit_to_bytes raw 0 buffer_without_tls off_0 len ;
-              go_with_tls ctx (k_without_tls (`Len len)) (Cstruct.shift raw len)
-          | None ->
-              (* Even if data is empty, eof was not reached. *)
-              Read
-                { k; buffer = Bytes.make 0x1000 '\000'; off = 0; len = 0x1000 }
-        and fiber_write data = function
-          | Some raw ->
-              let rec k raw n =
-                let raw = Cstruct.shift raw n in
-
-                (* XXX(dinosaure): write until raw is non-empty. *)
-                if Cstruct.length raw = 0
-                then fiber_read data
-                else
-                  Write
-                    {
-                      k = k raw;
-                      buffer = Cstruct.to_string raw;
-                      off = 0;
-                      len = Cstruct.length raw;
-                    } in
-              Write
-                {
-                  k = k raw;
-                  buffer = Cstruct.to_string raw;
-                  off = 0;
-                  len = Cstruct.length raw;
-                }
-          | None -> fiber_read data
-        and k res =
-          let len = match res with `End -> 0 | `Len len -> len in
-          let raw = Cstruct.of_bytes ~off:0 ~len buffer_with_tls in
-
-          match Tls.Engine.handle_tls state raw with
-          | Ok (`Ok state, `Response None, `Data data) ->
-              ctx.tls <- Some state ;
-              fiber_read data
-          | Ok (`Ok state, `Response resp, `Data data) ->
-              ctx.tls <- Some state ;
-              fiber_write data resp
-          | Ok (`Eof, `Response resp, `Data data) ->
-              ctx.tls <- None ;
-              let rec go_to_eof = function
-                | Read { k; _ } -> k `End
-                | Write { k; buffer; off; len } ->
-                    Write { k = go_to_eof <.> k; buffer; off; len }
-                | v -> v in
-              go_to_eof (fiber_write data resp)
-          | Error (failure, `Response resp) ->
-              (go_to_failure failure <.> only_write_tls) (`Response (Some resp))
-          | Ok (`Alert alert, `Response resp, `Data _) ->
-              (go_to_alert alert <.> only_write_tls) (`Response resp) in
-
-        Read
-          {
-            k;
-            buffer = buffer_with_tls;
-            off = 0;
-            len = Bytes.length buffer_with_tls;
-          }
-    | ( Some _,
-        Read { k; buffer = buffer_without_tls; off = off_0; len = len_0 },
-        delayed_len ) ->
-        let len = min delayed_len len_0 in
-        Cstruct.blit_to_bytes delayed_data 0 buffer_without_tls off_0 len ;
-        go_with_tls ctx (k (`Len len)) (Cstruct.shift delayed_data len)
-    | None, (Read _ as fiber), 0 -> fiber
-    | None, Read { k; buffer; off; len }, delayed_len ->
-        let len = min delayed_len len in
-        Cstruct.blit_to_bytes delayed_data 0 buffer off len ;
-        go_with_tls ctx (k (`Len len)) (Cstruct.shift delayed_data len)
-    | None, fiber, _ -> fiber
-    | _, fiber, _ -> fiber
-
-  let starttls_as_client ctx config =
-    let state, raw = Tls.Engine.client config in
-    let rec k raw len =
-      let raw = Cstruct.shift raw len in
-      if Cstruct.length raw = 0
-      then
-        handle_handshake ctx state (fun state ->
-            ctx.tls <- Some state ;
-            Return ())
-      else
-        Write
-          {
-            k = k raw;
-            buffer = Cstruct.to_string raw;
-            off = 0;
-            len = Cstruct.length raw;
-          } in
-
-    (* XXX(dinosaure): clean decoder. *)
-    Log.debug (fun m -> m "Clean internal buffer to start TLS.") ;
-    let buffer = ctx.Context_with_tls.context.Context.decoder.Decoder.buffer in
-    Bytes.fill buffer 0 (Bytes.length buffer) '\000' ;
-    ctx.Context_with_tls.context.Context.decoder.Decoder.pos <- 0 ;
-    ctx.Context_with_tls.context.Context.decoder.Decoder.max <- 0 ;
-
-    Log.debug (fun m -> m "Start TLS.") ;
-    Write
-      {
-        k = k raw;
-        buffer = Cstruct.to_string raw;
-        off = 0;
-        len = Cstruct.length raw;
-      }
-
-  let starttls_as_server ctx config =
-    let state = Tls.Engine.server config in
-
-    (* XXX(dinosaure): clean decoder. *)
-    Log.debug (fun m -> m "Clean internal buffer to start TLS.") ;
-    let buffer = ctx.Context_with_tls.context.Context.decoder.Decoder.buffer in
-    Bytes.fill buffer 0 (Bytes.length buffer) '\000' ;
-    ctx.Context_with_tls.context.Context.decoder.Decoder.pos <- 0 ;
-    ctx.Context_with_tls.context.Context.decoder.Decoder.max <- 0 ;
-
-    Log.debug (fun m -> m "Start TLS.") ;
-    handle_handshake ctx state (fun state ->
-        ctx.tls <- Some state ;
-        Return ())
-
-  let close ctx =
-    match ctx.Context_with_tls.tls with
-    | Some state ->
-        let state, raw = Tls.Engine.send_close_notify state in
-        ctx.tls <- Some state ;
-        let rec loop len =
-          let raw = Cstruct.shift raw len in
-          if Cstruct.length raw = 0
-          then Return ()
-          else
-            Write
-              {
-                k = loop;
-                buffer = Cstruct.to_string raw;
-                off = 0;
-                len = Cstruct.length raw;
-              } in
-        Write
-          {
-            k = loop;
-            buffer = Cstruct.to_string raw;
-            off = 0;
-            len = Cstruct.length raw;
-          }
-    | None -> Return ()
+        match fiber with
+        | Read { buffer; off; len; k } ->
+            let blit src src_off dst dst_off len =
+              Bigstringaf.blit_to_bytes src ~src_off dst ~dst_off ~len in
+            let len' = min (Ke.Rke.length queue) len in
+            Ke.Rke.N.keep_exn queue ~blit ~length:Bytes.length ~off ~len buffer ;
+            k (`Len len') |> State.to_result
+        | Write { k; buffer; off; len } -> (
+            let cs = Cstruct.of_string buffer ~off ~len in
+            let { Flow.run } = StartTLS.write tls cs in
+            run @@ function
+            | Ok () -> k len |> State.to_result
+            | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
+            | Error (StartTLS.Failure failure) ->
+                Return (Error (`Tls_failure failure))
+            | Error (StartTLS.Flow_error _) -> .
+            | Error StartTLS.Closed -> Return (Error `Tls_closed))
+        | Return v -> Return (Ok v)
+        | Error err -> Return (Error err))
 
   let encode : type a. encoder -> a send -> a -> (unit, [> error ]) t =
    fun ctx w v ->
-    let fiber =
-      Value.encode_without_tls ctx.Context_with_tls.context.Context.encoder w v
-    in
-    go_with_tls ctx fiber Cstruct.empty
+    match ctx.tls with
+    | None -> Value.encode_without_tls ctx.context.encoder w v
+    | Some tls ->
+        let fiber = Value.encode_without_tls ctx.context.encoder w v in
+        pipe tls ctx.queue fiber (Ok (`Data Cstruct.empty)) |> Flow.join
 
   let decode : type a. decoder -> a recv -> (a, [> error ]) t =
    fun ctx w ->
-    let decoder = ctx.Context_with_tls.context.Context.decoder in
-    let fiber = Value.decode_without_tls decoder w in
+    match ctx.tls with
+    | None -> Value.decode_without_tls ctx.context.decoder w
+    | Some tls ->
+        let fiber = Value.decode_without_tls ctx.context.decoder w in
+        let { Flow.run } = StartTLS.read tls in
+        run (pipe tls ctx.queue fiber) |> Flow.join
 
-    (* XXX(dinosaure): [decoder] can already contains something.
-       TODO(dinosaure): [?relax] as an argument? *)
-    if Decoder.at_least_one_line ~relax:true decoder
-    then fiber
-    else go_with_tls ctx fiber Cstruct.empty
+  let starttls_as_client (ctx : Context_with_tls.t) cfg =
+    let { Flow.run } = StartTLS.init_client cfg () in
+    (run @@ function
+     | Ok tls ->
+         ctx.tls <- Some tls ;
+         Return (Ok ())
+     | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
+     | Error (StartTLS.Failure failure) -> Return (Error (`Tls_failure failure))
+     | Error (StartTLS.Flow_error _) -> .
+     | Error StartTLS.Closed -> Return (Error `Tls_closed))
+    |> Flow.join
+
+  let starttls_as_server (ctx : Context_with_tls.t) cfg =
+    let { Flow.run } = StartTLS.init_server cfg () in
+    (run @@ function
+     | Ok tls ->
+         ctx.tls <- Some tls ;
+         Return (Ok ())
+     | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
+     | Error (StartTLS.Failure failure) -> Return (Error (`Tls_failure failure))
+     | Error (StartTLS.Flow_error _) -> .
+     | Error StartTLS.Closed -> Return (Error `Tls_closed))
+    |> Flow.join
+
+  let close (ctx : Context_with_tls.t) =
+    match ctx.tls with
+    | None -> Return ()
+    | Some tls ->
+        let { Flow.run } = StartTLS.close tls in
+        ( run @@ fun () ->
+          ctx.tls <- None ;
+          Return (Ok ()) )
+        |> Flow.join
 
   module Value = struct
     type error = Value.error
@@ -638,11 +636,13 @@ type error =
   [ `Tls of
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
   | `Protocol of
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
   | `Unsupported_mechanism
   | `Encryption_required
   | `Weak_mechanism
@@ -737,7 +737,7 @@ let run :
 
 let _dot = Cstruct.of_string "."
 
-let sendmail { bind; return } rdwr flow ctx mail =
+let sendmail ({ bind; return } as state) rdwr flow ctx mail =
   let ( >>= ) = bind in
 
   match ctx.Context_with_tls.tls with
@@ -746,23 +746,30 @@ let sendmail { bind; return } rdwr flow ctx mail =
         | Some (buf, off, len) -> rdwr.wr flow buf off len >>= mail >>= go
         | None -> return () in
       mail () >>= go
-  | Some state ->
-      let rec go state =
+  | Some tls ->
+      let rec go () =
         mail () >>= function
-        | None -> return state
+        | None -> return ()
         | Some (buf, off, len) -> (
             let raw = Cstruct.of_string buf ~off ~len in
             let raw =
               if len >= 1 && buf.[off] = '.' then [ _dot; raw ] else [ raw ]
             in
-            match Tls.Engine.send_application_data state raw with
-            | Some (state, raw) ->
-                let buf = Cstruct.to_string raw in
-                rdwr.wr flow buf 0 (Cstruct.length raw) >>= fun () -> go state
-            | None -> go state) in
-      go state >>= fun state ->
-      ctx.tls <- Some state ;
-      return ()
+            let { Flow.run = run' } = StartTLS.writev tls raw in
+            let m =
+              (run' @@ function
+               | Ok () -> Return (Ok ())
+               | Error (StartTLS.Alert alert) ->
+                   Return (Error (`Tls_alert alert))
+               | Error (StartTLS.Failure failure) ->
+                   Return (Error (`Tls_failure failure))
+               | Error (StartTLS.Flow_error _) -> .
+               | Error StartTLS.Closed -> Return (Error `Tls_closed))
+              |> Flow.join in
+            run state rdwr flow m >>= function
+            | Ok () -> go ()
+            | Error _ -> assert false) in
+      go ()
 
 let sendmail ({ bind; return } as impl) rdwr flow context config ?authentication
     ~domain sender recipients mail : ((unit, error) result, 's) io =

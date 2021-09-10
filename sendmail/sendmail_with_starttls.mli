@@ -54,7 +54,8 @@ module type S = sig
   type error =
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
 
   val pp_error : error Fmt.t
 
@@ -102,11 +103,13 @@ type error =
   [ `Tls of
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
   | `Protocol of
     [ `Protocol of Value.error
     | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure ]
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed ]
   | `Unsupported_mechanism
   | `Encryption_required
   | `Weak_mechanism

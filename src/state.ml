@@ -20,6 +20,22 @@ let rec reword_error : type v a b. (a -> b) -> (v, a) t -> (v, b) t =
       Write { k = reword_error f <.> k; buffer; off; len }
   | Return _ as x -> x
 
+let rec join : type a err. ((a, err) t, err) t -> (a, err) t = function
+  | Error _ as err -> err
+  | Read { k; buffer; off; len } ->
+      Read { k = join <.> k; buffer; off; len }
+  | Write { k; buffer; off; len } ->
+      Write { k = join <.> k; buffer; off; len }
+  | Return v -> v
+
+let rec to_result : type a err. (a, err) t -> ((a, err) result, _) t = function
+  | Error err -> Return (Error err)
+  | Return v -> Return (Ok v)
+  | Read { k; buffer; off; len } ->
+      Read { k = to_result <.> k; buffer; off; len }
+  | Write { k; buffer; off; len } ->
+      Write { k = to_result <.> k; buffer; off; len }
+
 module Context = struct
   type t = { encoder : Encoder.encoder; decoder : Decoder.decoder }
 
