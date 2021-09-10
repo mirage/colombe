@@ -312,7 +312,6 @@ module Make_with_tls (Value : VALUE) = struct
         match fiber with
         | Read { k; _ } -> k `End |> State.to_result
         | Write { k; buffer; off; len } -> (
-            Fmt.epr "<~ %S\n%!" (String.sub buffer off len) ;
             let cs = Cstruct.of_string buffer ~off ~len in
             let { Flow.run } = StartTLS.write tls cs in
             run @@ function
@@ -332,7 +331,6 @@ module Make_with_tls (Value : VALUE) = struct
         let blit src src_off dst dst_off len =
           let dst = Cstruct.of_bigarray dst ~off:dst_off ~len in
           Cstruct.blit src src_off dst 0 len in
-        Fmt.epr "~> %S\n%!" (Cstruct.to_string cs) ;
         Ke.Rke.N.push queue ~blit ~length:Cstruct.length cs ;
 
         match fiber with
@@ -345,14 +343,12 @@ module Make_with_tls (Value : VALUE) = struct
               Ke.Rke.N.keep_exn queue ~blit ~length:Bytes.length ~off ~len:len'
                 buffer ;
               Ke.Rke.N.shift_exn queue len') ;
-            Fmt.epr "~> %S\n%!" (Bytes.sub_string buffer off len') ;
             match k (`Len len') with
             | Read _ as fiber ->
                 let { Flow.run } = StartTLS.read tls in
                 run (pipe tls queue fiber)
             | fiber -> State.to_result fiber)
         | Write { k; buffer; off; len } -> (
-            Fmt.epr "<~ %S\n%!" (String.sub buffer off len) ;
             let cs = Cstruct.of_string buffer ~off ~len in
             let { Flow.run } = StartTLS.write tls cs in
             run @@ function
@@ -370,7 +366,6 @@ module Make_with_tls (Value : VALUE) = struct
     match ctx.tls with
     | None -> Value.encode_without_tls ctx.context.encoder w v
     | Some tls ->
-        Fmt.epr "<~ encode over TLS.\n%!" ;
         let fiber = Value.encode_without_tls ctx.context.encoder w v in
         pipe tls ctx.queue fiber (Ok (`Data Cstruct.empty)) |> Flow.join
 
@@ -379,7 +374,6 @@ module Make_with_tls (Value : VALUE) = struct
     match ctx.tls with
     | None -> Value.decode_without_tls ctx.context.decoder w
     | Some tls ->
-        Fmt.epr "~> decode over TLS.\n%!" ;
         let fiber = Value.decode_without_tls ctx.context.decoder w in
         pipe tls ctx.queue fiber (Ok (`Data Cstruct.empty)) |> Flow.join
 
