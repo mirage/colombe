@@ -9,7 +9,7 @@
  (name sendmail_with_starttls)
  (public_name sendmail.starttls)
  (modules sendmail_with_starttls)
- (libraries tls sendmail)
+ (libraries ke tls sendmail)
  (preprocess future_syntax))
 
 (library
