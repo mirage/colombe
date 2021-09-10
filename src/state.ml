@@ -1,6 +1,6 @@
 let ( <.> ) f g x = f (g x)
 
-type ('a, 'err) t =
+type (+'a, 'err) t =
   | Read of {
       buffer : bytes;
       off : int;
@@ -22,10 +22,8 @@ let rec reword_error : type v a b. (a -> b) -> (v, a) t -> (v, b) t =
 
 let rec join : type a err. ((a, err) t, err) t -> (a, err) t = function
   | Error _ as err -> err
-  | Read { k; buffer; off; len } ->
-      Read { k = join <.> k; buffer; off; len }
-  | Write { k; buffer; off; len } ->
-      Write { k = join <.> k; buffer; off; len }
+  | Read { k; buffer; off; len } -> Read { k = join <.> k; buffer; off; len }
+  | Write { k; buffer; off; len } -> Write { k = join <.> k; buffer; off; len }
   | Return v -> v
 
 let rec to_result : type a err. (a, err) t -> ((a, err) result, _) t = function
