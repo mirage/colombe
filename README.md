@@ -64,6 +64,11 @@ RFC5321 describes the SMTP protocols and some mechanisms such as the `Received:`
 field. The distribution provides a way to introspect `Received:` fields (and can
 produce a graph of them) or generate them from a server configuration.
 
+## Credits
+
+`colombe` has received funding from the Next Generation Internet Initiative (NGI)
+within the framework of the DAPSI Project.
+
 [SMTP]: https://en.wikipedia.org/wiki/Simple_Mail_Transfer_Protocol
 [RFC5321]: https://tools.ietf.org/html/rfc5321
 [LWT]: https://github.com/ocsigen/lwt
