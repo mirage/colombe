@@ -11,6 +11,10 @@ type ('a, 'err) t =
 
 val reword_error : ('a -> 'b) -> ('v, 'a) t -> ('v, 'b) t
 
+val join : (('a, 'err) t, 'err) t -> ('a, 'err) t
+
+val to_result : ('a, 'err) t -> (('a, 'err) result, _) t
+
 module Context : sig
   type t = { encoder : Encoder.encoder; decoder : Decoder.decoder }
 

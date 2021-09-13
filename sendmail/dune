@@ -8,8 +8,8 @@
 (library
  (name sendmail_with_starttls)
  (public_name sendmail.starttls)
- (modules sendmail_with_starttls)
- (libraries tls sendmail)
+ (modules tls_io sendmail_with_starttls)
+ (libraries ke tls sendmail)
  (preprocess future_syntax))
 
 (library
