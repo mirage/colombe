@@ -111,7 +111,31 @@ struct
         let k1 = function 0 -> go ~f k0 `End | len -> go ~f k0 (`Len len) in
         Write { k = k1; off; len; buffer }
 
+  let rec go ~f m len =
+    match m len with
+    | Return v -> f (Ok v)
+    | Read { k; off; len; buffer } -> Read { k = go ~f k; off; len; buffer }
+    | Write { k; off; len; buffer } ->
+        let k0 = function `End -> k 0 | `Len len -> k len in
+        let k1 = function 0 -> go ~f k0 `End | len -> go ~f k0 (`Len len) in
+        Write { k = k1; off; len; buffer }
+    | Error err -> f (Error err)
+
+  let bind' :
+      ('a, 'err) t -> f:(('a, 'err) result -> ('b, 'err) t) -> ('b, 'err) t =
+   fun m ~f ->
+    match m with
+    | Return v -> f (Ok v)
+    | Error err -> f (Error err)
+    | Read { k; off; len; buffer } -> Read { k = go ~f k; off; len; buffer }
+    | Write { k; off; len; buffer } ->
+        let k0 = function `End -> k 0 | `Len len -> k len in
+        let k1 = function 0 -> go ~f k0 `End | len -> go ~f k0 (`Len len) in
+        Write { k = k1; off; len; buffer }
+
   let ( let* ) m f = bind m ~f
+
+  let ( let+ ) m f = bind' m ~f
 
   let ( >>= ) m f = bind m ~f
 
