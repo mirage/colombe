@@ -524,7 +524,7 @@ let m0 ctx config ?authentication ~domain sender recipients =
   let has_starttls = has_starttls txts in
 
   if not has_starttls
-  then Error `STARTTLS_unavailable
+  then properly_quit_and_fail ctx `STARTTLS_unavailable
   else
     let* _txts =
       send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220 in
