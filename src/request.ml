@@ -117,11 +117,19 @@ module Decoder = struct
   open Decoder
 
   type nonrec error =
-    [ `Invalid_command of string | `Invalid_domain of string | error ]
+    [ `Invalid_command of string
+    | `Invalid_domain of string
+    | error
+    | `Invalid_reverse_path of string
+    | `Invalid_forward_path of string ]
 
   let pp_error ppf = function
     | `Invalid_command command -> Fmt.pf ppf "Invalid command: %S" command
     | `Invalid_domain domain -> Fmt.pf ppf "Invalid domain: %S" domain
+    | `Invalid_reverse_path reverse_path ->
+        Fmt.pf ppf "Invalid reverse path: %S" reverse_path
+    | `Invalid_forward_path forward_path ->
+        Fmt.pf ppf "Invalid forward path: %S" forward_path
     | #Decoder.error as err -> pp_error ppf err
 
   (* According to RFC 5321. *)
@@ -221,9 +229,11 @@ module Decoder = struct
   let mail ?relax decoder =
     let raw_eol, off, len = peek_while_eol ?relax decoder in
     let v = without_eol (raw_eol, off, len) in
-    let reverse_path = Reverse_path.Decoder.of_string v in
-    decoder.pos <- decoder.pos + len ;
-    return (`Mail reverse_path) decoder
+    try
+      let reverse_path = Reverse_path.Decoder.of_string v in
+      decoder.pos <- decoder.pos + len ;
+      return (`Mail reverse_path) decoder
+    with _exn -> fail decoder (`Invalid_reverse_path v)
 
   let recipient ?relax decoder =
     let raw_eol, off, len = peek_while_eol ?relax decoder in
