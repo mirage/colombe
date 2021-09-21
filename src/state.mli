@@ -72,6 +72,9 @@ module Scheduler
 
   val ( let* ) : ('a, 'err) t -> ('a -> ('b, 'err) t) -> ('b, 'err) t
 
+  val ( let+ ) :
+    ('a, 'err) t -> (('a, 'err) result -> ('b, 'err) t) -> ('b, 'err) t
+
   val ( >>= ) : ('a, 'err) t -> ('a -> ('b, 'err) t) -> ('b, 'err) t
 
   val encode :
