@@ -19,7 +19,11 @@ val pp : t Fmt.t
 
 module Decoder : sig
   type error =
-    [ `Invalid_command of string | `Invalid_domain of string | Decoder.error ]
+    [ `Invalid_command of string
+    | `Invalid_domain of string
+    | Decoder.error
+    | `Invalid_reverse_path of string
+    | `Invalid_forward_path of string ]
 
   val pp_error : error Fmt.t
 
