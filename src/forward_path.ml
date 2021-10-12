@@ -49,6 +49,6 @@ end
 module Encoder = struct
   let to_string = function
     | Postmaster -> "<Postmaster>"
-    | Domain domain -> Fmt.strf "<Postmaster@%s>" (Domain.to_string domain)
+    | Domain domain -> Fmt.str "<Postmaster@%s>" (Domain.to_string domain)
     | Forward_path path -> Path.Encoder.to_string path
 end

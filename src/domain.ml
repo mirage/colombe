@@ -117,7 +117,7 @@ module Decoder = struct
 
   let ipv6_address_literal = string "IPv6:" *> ipv6_addr
 
-  let failf fmt = Fmt.kstrf fail fmt
+  let failf fmt = Fmt.kstr fail fmt
 
   let ldh_str =
     take_while1 (function
@@ -156,10 +156,10 @@ module Encoder = struct
      [to_string] on the protocol. *)
 
   let to_string = function
-    | IPv4 ipv4 -> Fmt.strf "[%s]" (Ipaddr.V4.to_string ipv4)
-    | IPv6 ipv6 -> Fmt.strf "[IPv6:%s]" (Ipaddr.V6.to_string ipv6)
-    | Extension (k, v) -> Fmt.strf "[%s:%s]" k v
-    | Domain l -> Fmt.strf "%a" Fmt.(list ~sep:(const string ".") string) l
+    | IPv4 ipv4 -> Fmt.str "[%s]" (Ipaddr.V4.to_string ipv4)
+    | IPv6 ipv6 -> Fmt.str "[IPv6:%s]" (Ipaddr.V6.to_string ipv6)
+    | Extension (k, v) -> Fmt.str "[%s:%s]" k v
+    | Domain l -> Fmt.str "%a" Fmt.(list ~sep:(const string ".") string) l
 end
 
 let of_string = Decoder.of_string
