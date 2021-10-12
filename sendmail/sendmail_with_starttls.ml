@@ -444,7 +444,7 @@ let auth ctx mechanism info =
             match txts with
             | [] ->
                 let payload =
-                  Base64.encode_exn (Fmt.strf "\000%s\000%s" username password)
+                  Base64.encode_exn (Fmt.str "\000%s\000%s" username password)
                 in
                 send ctx Value.Payload payload
             | x :: _ ->
@@ -452,13 +452,13 @@ let auth ctx mechanism info =
             | Ok x ->
                 let payload =
                   Base64.encode_exn
-                    (Fmt.strf "%s\000%s\000%s" x username password) in
+                    (Fmt.str "%s\000%s\000%s" x username password) in
                 send ctx Value.Payload payload
             | Error _ ->
                 Log.warn (fun m ->
                     m "The server send an invalid base64 value: %S" x) ;
                 let payload =
-                  Base64.encode_exn (Fmt.strf "\000%s\000%s" username password)
+                  Base64.encode_exn (Fmt.str "\000%s\000%s" username password)
                 in
                 send ctx Value.Payload payload in
           recv ctx Value.Code >>= function

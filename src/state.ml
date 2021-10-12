@@ -192,5 +192,5 @@ struct
 
   let fail error = Error error
 
-  let error_msgf fmt = Fmt.kstrf (fun err -> Error (`Msg err)) fmt
+  let error_msgf fmt = Fmt.kstr (fun err -> Error (`Msg err)) fmt
 end

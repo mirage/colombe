@@ -324,7 +324,7 @@ module Encoder = struct
 
   let id ppf = function
     | `MsgID v -> Mrmime.MessageID.Encoder.message_id ppf v
-    | `Local v -> string ppf (Fmt.strf "%a" Emile.pp_local v)
+    | `Local v -> string ppf (Fmt.str "%a" Emile.pp_local v)
     | `Atom v -> string ppf v
 
   let id ppf = function
