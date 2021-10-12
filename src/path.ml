@@ -69,7 +69,7 @@ let pp ppf { local; domain; rest } =
   | [] -> Fmt.pf ppf "<%a@%a>" pp_local local Domain.pp domain
   | rest ->
       Fmt.pf ppf "<%a:%a@%a>"
-        Fmt.(list ~sep:(const string ",") (prefix (const string "@") Domain.pp))
+        Fmt.(list ~sep:(const string ",") (const string "@" ++ Domain.pp))
         rest pp_local local Domain.pp domain
 
 module Decoder = struct
@@ -123,7 +123,7 @@ module Decoder = struct
     return { local; domain; rest }
 end
 
-let error_msgf fmt = Fmt.kstrf (fun err -> Error (`Msg err)) fmt
+let error_msgf fmt = Fmt.kstr (fun err -> Error (`Msg err)) fmt
 
 let of_string str =
   match Angstrom.parse_string ~consume:All Decoder.path str with
@@ -167,18 +167,18 @@ module Encoder = struct
     Buffer.contents res
 
   let local_to_string = function
-    | `String x -> Fmt.strf "%a" Fmt.(using escape string) x
-    | `Dot_string l -> Fmt.strf "%a" Fmt.(list ~sep:(const string ".") string) l
+    | `String x -> Fmt.str "%a" Fmt.(using escape string) x
+    | `Dot_string l -> Fmt.str "%a" Fmt.(list ~sep:(const string ".") string) l
 
   let to_string x =
     match x.rest with
     | [] ->
-        Fmt.strf "<%s@%s>" (local_to_string x.local) (Domain.to_string x.domain)
+        Fmt.str "<%s@%s>" (local_to_string x.local) (Domain.to_string x.domain)
     | rest ->
-        Fmt.strf "<%a:%s@%s>"
+        Fmt.str "<%a:%s@%s>"
           Fmt.(
             list ~sep:(const string ",")
-              (prefix (const string "@") (using Domain.to_string string)))
+              (const string "@" ++ using Domain.to_string string))
           rest (local_to_string x.local)
           (Domain.to_string x.domain)
 end

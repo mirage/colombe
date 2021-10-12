@@ -142,7 +142,7 @@ let line = everything_expect_crlf
 
 let response = map [ code; list1 line ] @@ Colombe.Reply.v
 
-let failf fmt = Fmt.kstrf fail fmt
+let failf fmt = Fmt.kstr fail fmt
 
 let pp_chr =
   Fmt.using (function '\032' .. '\126' as x -> x | _ -> '.') Fmt.char
