@@ -44,7 +44,7 @@ let sendmail ~hostname ?(port = 465) ~domain ~authenticator ?authentication
     recipients mail
   |> Lwt_scheduler.prj
 
-let failf fmt = Fmt.kstrf (fun err -> Lwt.fail (Failure err)) fmt
+let failf fmt = Fmt.kstr (fun err -> Lwt.fail (Failure err)) fmt
 
 let resolve host =
   Lwt_unix.getprotobyname "tcp" >>= fun tcp ->

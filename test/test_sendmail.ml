@@ -120,7 +120,7 @@ let test_1 () =
       [
         "EHLO gmail.com";
         "AUTH PLAIN";
-        Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar");
+        Base64.encode_exn ~pad:true (Fmt.str "\000romain\000foobar");
         "MAIL FROM:<romain.calascibetta@gmail.com>";
         "RCPT TO:<anil@recoil.org>";
         "DATA";
@@ -160,7 +160,7 @@ let test_2 () =
       [
         "EHLO gmail.com";
         "AUTH PLAIN";
-        Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar");
+        Base64.encode_exn ~pad:true (Fmt.str "\000romain\000foobar");
         "QUIT";
       ] in
   let authentication =
@@ -253,7 +253,7 @@ let test_5 () =
       [
         "EHLO gmail.com";
         "AUTH PLAIN";
-        Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar");
+        Base64.encode_exn ~pad:true (Fmt.str "\000romain\000foobar");
         "MAIL FROM:<romain.calascibetta@gmail.com> BODY=8BITMIME";
         "RCPT TO:<anil@recoil.org>";
         "DATA";
@@ -472,7 +472,7 @@ let test_9 () =
       [
         "EHLO gmail.com";
         "AUTH PLAIN";
-        Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar");
+        Base64.encode_exn ~pad:true (Fmt.str "\000romain\000foobar");
         "MAIL FROM:<romain.calascibetta@gmail.com> BODY=8BITMIME";
         "RCPT TO:<anil@recoil.org>";
         "DATA";
@@ -511,7 +511,7 @@ let test_10 () =
       [
         "EHLO gmail.com";
         "AUTH PLAIN";
-        Base64.encode_exn ~pad:true (Fmt.strf "\000romain\000foobar");
+        Base64.encode_exn ~pad:true (Fmt.str "\000romain\000foobar");
         "QUIT";
       ] in
   let authentication =
