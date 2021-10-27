@@ -45,7 +45,15 @@ module Context = struct
     Fmt.pf ppf "{ @[<hov>encoder= @[<hov>%a@];@ decoder= @[<hov>%a@]@] }"
       Encoder.pp t.encoder Decoder.pp t.decoder
 
-  let make () = { encoder = Encoder.encoder (); decoder = Decoder.decoder () }
+  let encoder_ex_nihilo () = Bytes.create Encoder.io_buffer_size
+
+  let decoder_ex_nihilo () = Bytes.create Decoder.io_buffer_size
+
+  let make ?(encoder = encoder_ex_nihilo) ?(decoder = decoder_ex_nihilo) () =
+    {
+      encoder = Encoder.encoder_from_preallocated_bytes (encoder ());
+      decoder = Decoder.decoder_from_preallocated_bytes (decoder ());
+    }
 
   let encoder { encoder; _ } = encoder
 

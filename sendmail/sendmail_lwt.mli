@@ -1,6 +1,8 @@
 type error = Sendmail.error
 
 val sendmail :
+  ?encoder:(unit -> bytes) ->
+  ?decoder:(unit -> bytes) ->
   hostname:'a Domain_name.t ->
   ?port:int ->
   domain:Colombe.Domain.t ->
@@ -80,9 +82,20 @@ val sendmail :
     [mrmime] ensures to make on its way a stream which emits line per line. A
     non-user of [mrmime] should be aware about this assumption.
 
-    [sendmail] starts by itself a TLS connection with the SMTP server. *)
+    [sendmail] starts by itself a TLS connection with the SMTP server.
+
+    The user is able to re-use pre-allocated {!Colombe.Encoder.encoder} and
+    {!Colombe.Decoder.decoder} if it wants - note that these resources can
+    {b not} be shared concurrently. These resources can be huge (see
+    {!Colombe.Encoder.io_buffer_size}/{!Colombe.Decoder.io_buffer_size}) and in
+    a server context, it can be more appropriate to pre-allocate these resources
+    and give them then to [sendmail]. By this way, the whole process will
+    allocate only minor words. *)
 
 val sendmail_with_starttls :
+  ?encoder:(unit -> bytes) ->
+  ?decoder:(unit -> bytes) ->
+  ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
   hostname:'a Domain_name.t ->
   ?port:int ->
   domain:Colombe.Domain.t ->

@@ -14,7 +14,12 @@ module Context_with_tls : sig
 
   val decoder : t -> decoder
 
-  val make : unit -> t
+  val make :
+    ?encoder:(unit -> bytes) ->
+    ?decoder:(unit -> bytes) ->
+    ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
+    unit ->
+    t
 
   val tls : t -> bool
 end
