@@ -6,7 +6,9 @@ val io_buffer_size : int
 
 val decoder : unit -> decoder
 
-val decoder_from : string -> decoder
+val decoder_from_string : string -> decoder
+
+val decoder_from_preallocated_bytes : bytes -> decoder
 
 val end_of_input : decoder -> int
 

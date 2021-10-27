@@ -4,6 +4,8 @@ val io_buffer_size : int
 
 val encoder : unit -> encoder
 
+val encoder_from_preallocated_bytes : bytes -> encoder
+
 val pp : encoder Fmt.t
 
 type error = [ `Not_enough_space ]

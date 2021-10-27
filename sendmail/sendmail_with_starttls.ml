@@ -210,12 +210,12 @@ module Context_with_tls = struct
 
   let decoder x = x
 
-  let make () =
-    {
-      context = Context.make ();
-      queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char;
-      tls = None;
-    }
+  let queue_ex_nihilo () = Ke.Rke.create ~capacity:0x1000 Bigarray.char
+
+  let make ?encoder ?decoder ?(queue = queue_ex_nihilo) () =
+    let queue = queue () in
+    Ke.Rke.clear queue ;
+    { context = Context.make ?encoder ?decoder (); queue; tls = None }
 
   let tls { tls; _ } = match tls with Some _ -> true | _ -> false
 end
