@@ -7,10 +7,12 @@ let io_buffer_size = 65536
 
 let decoder () = { buffer = Bytes.create io_buffer_size; pos = 0; max = 0 }
 
-let decoder_from x =
+let decoder_from_string x =
   let max = String.length x in
   let buffer = Bytes.of_string x in
   { buffer; pos = 0; max }
+
+let decoder_from_preallocated_bytes buffer = { buffer; pos = 0; max = 0 }
 
 type error =
   [ `End_of_input

@@ -286,7 +286,7 @@ module Decoder = struct
     else prompt (response k) decoder
 
   let of_string x =
-    let decoder = decoder_from x in
+    let decoder = decoder_from_string x in
     let go x : (t, [> error ]) result =
       match x with
       | Read _ -> Error `End_of_input
@@ -295,7 +295,7 @@ module Decoder = struct
     go (response decoder)
 
   let of_string_raw x r =
-    let decoder = decoder_from x in
+    let decoder = decoder_from_string x in
     let go x : (t, [> error ]) result =
       match x with
       | Read _ -> Error `End_of_input

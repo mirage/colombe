@@ -28,7 +28,7 @@ module Context : sig
 
   val decoder : t -> decoder
 
-  val make : unit -> t
+  val make : ?encoder:(unit -> bytes) -> ?decoder:(unit -> bytes) -> unit -> t
 end
 
 module type S = sig
