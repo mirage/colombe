@@ -34,10 +34,10 @@ let rdwr =
 
 type error = Sendmail.error
 
-let sendmail ~hostname ?(port = 465) ~domain ~authenticator ?authentication
-    sender recipients mail =
+let sendmail ?encoder ?decoder ~hostname ?(port = 465) ~domain ~authenticator
+    ?authentication sender recipients mail =
   let hostname = Domain_name.to_string hostname in
-  let ctx = Colombe.State.Context.make () in
+  let ctx = Colombe.State.Context.make ?encoder ?decoder () in
   let mail () = Lwt_scheduler.inj (mail ()) in
   Tls_lwt.connect authenticator (hostname, port) >>= fun (ic, oc) ->
   Sendmail.sendmail lwt rdwr { ic; oc } ctx ~domain ?authentication sender
@@ -53,8 +53,8 @@ let resolve host =
   | [] -> failf "Submission service is not recognized by your system"
   | ai :: _ -> Lwt.return ai.ai_addr
 
-let sendmail_with_starttls ~hostname ?port ~domain ~authenticator
-    ?authentication sender recipients mail =
+let sendmail_with_starttls ?encoder ?decoder ?queue ~hostname ?port ~domain
+    ~authenticator ?authentication sender recipients mail =
   resolve (Domain_name.to_string hostname) >>= fun addr ->
   let addr =
     match (addr, port) with
@@ -67,7 +67,9 @@ let sendmail_with_starttls ~hostname ?port ~domain ~authenticator
   let ic = Lwt_io.of_fd ~mode:Lwt_io.Input socket in
   let oc = Lwt_io.of_fd ~mode:Lwt_io.Output socket in
   let tls = Tls.Config.client ~authenticator () in
-  let ctx = Sendmail_with_starttls.Context_with_tls.make () in
+  let ctx =
+    Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
+  in
   let mail () = Lwt_scheduler.inj (mail ()) in
   Lwt_scheduler.prj
     (Sendmail_with_starttls.sendmail lwt rdwr { ic; oc } ctx tls ?authentication

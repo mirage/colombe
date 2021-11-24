@@ -20,6 +20,8 @@ let io_buffer_size = 65536
 
 let encoder () = { payload = Bytes.create io_buffer_size; pos = 0 }
 
+let encoder_from_preallocated_bytes payload = { payload; pos = 0 }
+
 exception Leave of error
 
 let leave_with (_ : encoder) error = raise (Leave error)

@@ -210,12 +210,12 @@ module Context_with_tls = struct
 
   let decoder x = x
 
-  let make () =
-    {
-      context = Context.make ();
-      queue = Ke.Rke.create ~capacity:0x1000 Bigarray.char;
-      tls = None;
-    }
+  let queue_ex_nihilo () = Ke.Rke.create ~capacity:0x1000 Bigarray.char
+
+  let make ?encoder ?decoder ?(queue = queue_ex_nihilo) () =
+    let queue = queue () in
+    Ke.Rke.clear queue ;
+    { context = Context.make ?encoder ?decoder (); queue; tls = None }
 
   let tls { tls; _ } = match tls with Some _ -> true | _ -> false
 end
@@ -593,12 +593,12 @@ let sendmail ({ bind; return } as state) rdwr flow ctx mail =
   | None ->
       let rec go = function
         | Some (buf, off, len) -> rdwr.wr flow buf off len >>= mail >>= go
-        | None -> return () in
+        | None -> return (Ok ()) in
       mail () >>= go
   | Some tls ->
       let rec go () =
         mail () >>= function
-        | None -> return ()
+        | None -> return (Ok ())
         | Some (buf, off, len) -> (
             let raw = Cstruct.of_string buf ~off ~len in
             let raw =
@@ -609,15 +609,15 @@ let sendmail ({ bind; return } as state) rdwr flow ctx mail =
               (run' @@ function
                | Ok () -> Return (Ok ())
                | Error (StartTLS.Alert alert) ->
-                   Return (Error (`Tls_alert alert))
+                   Return (Error (`Tls (`Tls_alert alert)))
                | Error (StartTLS.Failure failure) ->
-                   Return (Error (`Tls_failure failure))
+                   Return (Error (`Tls (`Tls_failure failure)))
                | Error (StartTLS.Flow_error _) -> .
-               | Error StartTLS.Closed -> Return (Error `Tls_closed))
+               | Error StartTLS.Closed -> Return (Error (`Tls `Tls_closed)))
               |> Flow.join in
             run state rdwr flow m >>= function
             | Ok () -> go ()
-            | Error _ -> assert false) in
+            | Error _ as err -> return err) in
       go ()
 
 let sendmail ({ bind; return } as impl) rdwr flow context config ?authentication
@@ -629,6 +629,6 @@ let sendmail ({ bind; return } as impl) rdwr flow context config ?authentication
   let m0 = m0 context config ~domain ?authentication sender recipients in
   run impl rdwr flow m0 >>= fun () ->
   (* assert that context is empty. *)
-  sendmail impl rdwr flow context mail >>- fun () ->
+  sendmail impl rdwr flow context mail >>= fun () ->
   let m1 = m1 context in
   run impl rdwr flow m1
