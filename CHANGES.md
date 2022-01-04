@@ -1,3 +1,11 @@
+### v0.6.0 2022-01-03 Paris (France)
+
+- Better implementation of `STARTTLS` (@dinosaure, #50)
+- Properly quit if the server does not implement `STARTTLS` (@dinosaure, #51)
+- Add `let+` operator which manipulate `result` type (@dinosaure, #52)
+- Upgrade `fmt.0.8.9` (@dinosaure, #53)
+- Be able to pre-allocate resources when we want to send an email (@dinosaure, #54)
+
 ### v0.5.0 2021-08-30 Paris (France)
 
 - Use `Cstruct.length` instead of `Cstruct.len` (@dinosaure, #45)
