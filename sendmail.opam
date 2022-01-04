@@ -16,13 +16,14 @@ build: [
 
 depends: [
   "ocaml" {>= "4.03.0"}
-  "dune" {>= "1.8"}
+  "dune" {>= "2.0"}
   "colombe" {= version}
   "tls" {>= "0.13.0"}
   "base64" {>= "3.0.0"}
   "ke" {>= "0.4"}
   "logs"
   "rresult"
+  "bigstringaf" {>= "0.2.0"}
   "emile" {>= "0.8" & with-test}
   "mrmime" {>= "0.3.2" & with-test}
   "cstruct" {>= "6.0.0"}
