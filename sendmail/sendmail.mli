@@ -8,7 +8,7 @@ type reverse_path = Reverse_path.t
 
 type forward_path = Forward_path.t
 
-type mechanism = PLAIN
+type mechanism = PLAIN | LOGIN
 
 type authentication = {
   username : string;
@@ -22,7 +22,9 @@ type error =
   [ `Protocol of
     [ Request.Encoder.error
     | Reply.Decoder.error
-    | `Unexpected_response of int * string list ]
+    | `Unexpected_response of int * string list
+    | `Invalid_base64_value of string
+    | `Invalid_login_challenge of string ]
   | `Unsupported_mechanism
   | `Encryption_required
   | `Weak_mechanism
