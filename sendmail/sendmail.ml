@@ -197,8 +197,8 @@ let auth ctx mechanism info =
           | 501, _txts -> properly_quit_and_fail ctx `Authentication_rejected
           | 535, _txts -> properly_quit_and_fail ctx `Authentication_failed
           | code, txts -> fail (`Protocol (`Unexpected_response (code, txts))))
-        | Ok _ -> assert false
-        | Error (_code, _txts) -> assert false )
+        | Ok challenge -> properly_quit_and_fail ctx (`Protocol (`Invalid_login_challenge challenge))
+        | Error (_code, _txts) -> properly_quit_and_fail ctx `Authentication_failed )
       | code -> fail (`Protocol (`Unexpected_response (code, txts))))
   | Value.PLAIN -> (
       let* code, txts =
