@@ -44,7 +44,9 @@ module Value : sig
   type error =
     [ Request.Encoder.error
     | Reply.Decoder.error
-    | `Unexpected_response of int * string list ]
+    | `Unexpected_response of int * string list
+    | `Invalid_base64_value of string
+    | `Invalid_login_challenge of string ]
 end
 
 module type S = sig

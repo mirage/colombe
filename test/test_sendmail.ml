@@ -531,6 +531,52 @@ let test_10 () =
       assert (err = `Authentication_rejected)
   | Ok _ -> Fmt.failwith "Should fail with [Authentication_rejected]"
 
+let test_11 () =
+  Alcotest.test_case "login authentication" `Quick @@ fun () ->
+  let ctx = Colombe.State.Context.make () in
+  let rdwr, is_empty =
+    rdwr_from_flows
+      [
+        "220 smtp.gmail.com ESMTP - gsmtp";
+        "250-smtp.gmail.com at your service, [8.8.8.8]";
+        "250-SIZE 0";
+        "250-AUTH LOGIN PLAIN";
+        "250-ENHANCEDSTATUSCODES";
+        "250 CHUNKING";
+        "334 VXNlciBOYW1lAA==";
+        "334 UGFzc3dvcmQA";
+        "235 Authentication successful.";
+        "250 <romain.calascibetta@gmail.com> as sender";
+        "250 <anil@recoil.org> as recipient";
+        "354 ";
+        "250 Sended!";
+        "221 Closing connection.";
+      ]
+      [
+        "EHLO gmail.com";
+        "AUTH LOGIN";
+        Base64.encode_exn ~pad:true (Fmt.str "tim");
+        Base64.encode_exn ~pad:true (Fmt.str "tanstaaftanstaaf");
+        "MAIL FROM:<romain.calascibetta@gmail.com>";
+        "RCPT TO:<anil@recoil.org>";
+        "DATA";
+        ".";
+        "QUIT";
+      ] in
+  let authentication =
+    { Sendmail.mechanism = LOGIN; username = "tim"; password = "tanstaaftanstaaf" }
+  in
+  let fiber =
+    Sendmail.sendmail unix rdwr () ctx
+      ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
+      (Rresult.R.get_ok @@ Colombe_emile.to_reverse_path romain_calascibetta)
+      [ Rresult.R.get_ok @@ Colombe_emile.to_forward_path anil ]
+      ~authentication
+      (fun () -> unix.return None) in
+  match Unix_scheduler.prj fiber with
+  | Error err -> Fmt.failwith "Got an error: %a" Sendmail.pp_error err
+  | Ok _ -> is_empty ()
+
 let () =
   Alcotest.run "sendmail"
     [
@@ -547,5 +593,6 @@ let () =
           test_8 ();
           test_9 ();
           test_10 ();
+          test_11 ();
         ] );
     ]
