@@ -3,11 +3,8 @@ open Colombe.State
 open Colombe
 
 type domain = Domain.t
-
 type reverse_path = Reverse_path.t
-
 type forward_path = Forward_path.t
-
 type mechanism = PLAIN | LOGIN
 
 type authentication = {

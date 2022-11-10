@@ -3,15 +3,11 @@ open Colombe
 
 module Context_with_tls : sig
   type t
-
   type encoder
-
   type decoder
 
   val pp : t Fmt.t
-
   val encoder : t -> encoder
-
   val decoder : t -> decoder
 
   val make :
@@ -26,9 +22,7 @@ end
 
 module type VALUE = sig
   type 'x send
-
   type 'x recv
-
   type error
 
   val pp_error : error Fmt.t
@@ -51,7 +45,6 @@ end
 
 module type S = sig
   type 'x send
-
   type 'x recv
 
   module Value : sig
@@ -67,7 +60,6 @@ module type S = sig
   val pp_error : error Fmt.t
 
   type encoder
-
   type decoder
 
   val starttls_as_client :
@@ -77,9 +69,7 @@ module type S = sig
     decoder -> Tls.Config.server -> (unit, [> error ]) State.t
 
   val close : encoder -> (unit, [> error ]) State.t
-
   val encode : encoder -> 'a send -> 'a -> (unit, [> error ]) State.t
-
   val decode : decoder -> 'a recv -> ('a, [> error ]) State.t
 end
 (* {b Note.} Even if [Make_with_tls.encoder = Make_with_tls.decoder],
@@ -95,15 +85,10 @@ module Make_with_tls (Value : VALUE) :
      and type decoder = Context_with_tls.decoder
 
 type domain = Domain.t
-
 type reverse_path = Reverse_path.t
-
 type forward_path = Forward_path.t
-
 type mechanism = Sendmail.mechanism
-
 type authentication = Sendmail.authentication
-
 type ('a, 's) stream = ('a, 's) Sendmail.stream
 
 type error =

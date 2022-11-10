@@ -1,5 +1,4 @@
 let some x = Some x
-
 let error_msgf fmt = Format.kasprintf (fun err -> Error (`Msg err)) fmt
 
 let concatene local =
@@ -32,7 +31,6 @@ let to_path ?(route = []) mailbox =
   | Error _ as err -> err
 
 let ( >>| ) x f = match x with Ok x -> Ok (f x) | Error err -> Error err
-
 let to_reverse_path ?route mailbox = to_path ?route mailbox >>| some
 
 let to_forward_path ?route mailbox =

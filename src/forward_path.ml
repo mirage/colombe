@@ -27,7 +27,6 @@ module Decoder = struct
   open Angstrom
 
   let forward_path = Path.Decoder.path
-
   let mail_parameters = Reverse_path.Decoder.mail_parameters
 
   let of_string x =
