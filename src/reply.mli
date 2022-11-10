@@ -41,26 +41,18 @@ type t =
   | `Other of int * string list ]
 
 val pp : t Fmt.t
-
 val compare : t -> t -> int
-
 val equal : t -> t -> bool
-
 val v : int -> string list -> t
-
 val code : t -> int
-
 val lines : t -> string list
 
 module Decoder : sig
   type error = [ `Invalid_code of int | Decoder.error ]
 
   val pp_error : error Fmt.t
-
   val response : Decoder.decoder -> (t, [> error ]) Decoder.state
-
   val of_string : string -> (t, [> error ]) result
-
   val of_string_raw : string -> int ref -> (t, [> error ]) result
 end
 
@@ -68,8 +60,6 @@ module Encoder : sig
   type error = Encoder.error
 
   val pp_error : error Fmt.t
-
   val response : t -> Encoder.encoder -> [> error ] Encoder.state
-
   val to_string : t -> (string, error) result
 end

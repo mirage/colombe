@@ -90,11 +90,8 @@ let mail_parameter =
   map [ esmtp_keyword; option esmtp_param ] @@ fun k v -> (k, v)
 
 let mail_parameters = list mail_parameter
-
 let atext = alphabet_from_predicate Colombe.Path.Decoder.is_atext
-
 let atext = dynamic_bind (range ~min:1 78) (string_from_alphabet atext)
-
 let local = map [ list1 atext ] @@ fun lst -> `Dot_string lst
 (* TODO: [`String] *)
 
@@ -113,7 +110,6 @@ let forward_path =
     ]
 
 let everything_expect_crlf = function '\r' | '\n' -> false | _ -> true
-
 let everything_expect_crlf = alphabet_from_predicate everything_expect_crlf
 
 let everything_expect_crlf =
@@ -137,11 +133,8 @@ let command =
     ]
 
 let code = range ~min:200 600
-
 let line = everything_expect_crlf
-
 let response = map [ code; list1 line ] @@ Colombe.Reply.v
-
 let failf fmt = Fmt.kstr fail fmt
 
 let pp_chr =

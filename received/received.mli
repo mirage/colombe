@@ -4,7 +4,6 @@ type t
 (** Type of [Received] value. *)
 
 val compare : t -> t -> int
-
 val equal : t -> t -> bool
 
 type 'a with_info = Only of 'a | With of 'a * info
@@ -14,9 +13,7 @@ and info =
   | `Domain_and_address of Colombe.Domain.t * Colombe.Domain.t ]
 
 val received_by : t -> Colombe.Domain.t with_info option
-
 val received_from : t -> Colombe.Domain.t with_info option
-
 val received_for : t -> Colombe.Path.t option
 
 type link = private [ `TCP | `Atom of string ]
@@ -30,7 +27,6 @@ type protocol = private [ `ESMTP | `SMTP | `Atom of string ]
     - Other protocol *)
 
 val received_with : t -> protocol option
-
 val received_via : t -> link option
 
 val id :
@@ -43,13 +39,9 @@ val date_time : t -> Mrmime.Date.t
 type 'a stream = unit -> 'a option
 
 val tcp : link
-
 val link : string -> link
-
 val smtp : protocol
-
 val esmtp : protocol
-
 val protocol : string -> protocol
 
 val make :
@@ -82,7 +74,6 @@ end
 
 module Encoder : sig
   val received : t Prettym.t
-
   val as_field : t Prettym.t
 end
 
