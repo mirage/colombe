@@ -14,7 +14,6 @@ type t =
   | `Payload of string ]
 
 val equal : t -> t -> bool
-
 val pp : t Fmt.t
 
 module Decoder : sig
@@ -26,13 +25,9 @@ module Decoder : sig
     | `Invalid_forward_path of string ]
 
   val pp_error : error Fmt.t
-
   val add_extension : string -> unit
-
   val request : ?relax:bool -> Decoder.decoder -> (t, [> error ]) Decoder.state
-
   val of_string : string -> (t, [> error ]) result
-
   val of_string_raw : string -> int ref -> (t, [> error ]) result
 end
 
@@ -40,8 +35,6 @@ module Encoder : sig
   type error = Encoder.error
 
   val pp_error : error Fmt.t
-
   val request : t -> Encoder.encoder -> [> error ] Encoder.state
-
   val to_string : t -> (string, error) result
 end

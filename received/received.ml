@@ -6,7 +6,6 @@ module Option = struct
 end
 
 type 'a stream = unit -> 'a option
-
 type protocol = [ `ESMTP | `SMTP | `Atom of string ]
 
 (* TODO(dinosaure): according to RFC3848, we should add:
@@ -20,7 +19,6 @@ type protocol = [ `ESMTP | `SMTP | `Atom of string ]
 type link = [ `TCP | `Atom of string ]
 
 type 'a with_info = Only of 'a | With of 'a * info
-
 and info = [ `Address of Domain.t | `Domain_and_address of Domain.t * Domain.t ]
 
 type t = {
@@ -36,11 +34,8 @@ type t = {
 }
 
 let received_with { _with; _ } = _with
-
 let received_via { via; _ } = via
-
 let id { id; _ } = id
-
 let date_time { date_time; _ } = date_time
 
 let map_domain = function
@@ -83,19 +78,12 @@ let compare t0 t1 =
   | None, None -> 0
 
 let received_by { by; _ } = by
-
 let received_from { from; _ } = from
-
 let received_for { _for; _ } = _for
-
 let tcp = `TCP
-
 let link v = `Atom v
-
 let smtp = `SMTP
-
 let esmtp = `ESMTP
-
 let protocol v = `Atom v
 
 let make ?from ?by ?via ?protocol ?id _for ~zone ptime =
@@ -166,13 +154,9 @@ module Decoder = struct
     <|> Domain.Decoder.domain
 
   let address_literal = Domain.Decoder.address_literal
-
   let atom = lift (fun x -> `Atom x) Path.Decoder.atom
-
   let date_time = Date.Decoder.date_time
-
   let fws = skip_while is_wsp
-
   let cfws = Emile.Parser.cfws
 
   let tcp_info =
@@ -183,13 +167,9 @@ module Decoder = struct
           return (`Domain_and_address (domain, v)) )
 
   let via = string_ci "via"
-
   let _with = string_ci "with"
-
   let id = string_ci "id"
-
   let _for = string_ci "for"
-
   let link = atom >>= function `Atom "TCP" -> return `TCP | v -> return v
 
   let protocol =
@@ -199,11 +179,8 @@ module Decoder = struct
     | v -> return v
 
   let via = option () cfws *> via *> fws *> link
-
   let via = lift some via
-
   let _with = option () cfws *> _with *> fws *> protocol
-
   let _with = lift some _with
 
   let id =

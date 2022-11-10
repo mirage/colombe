@@ -36,9 +36,7 @@ let rec to_result : type a err. (a, err) t -> ((a, err) result, _) t = function
 
 module Context = struct
   type t = { encoder : Encoder.encoder; decoder : Decoder.decoder }
-
   type encoder = Encoder.encoder
-
   type decoder = Decoder.decoder
 
   let pp ppf t =
@@ -46,7 +44,6 @@ module Context = struct
       Encoder.pp t.encoder Decoder.pp t.decoder
 
   let encoder_ex_nihilo () = Bytes.create Encoder.io_buffer_size
-
   let decoder_ex_nihilo () = Bytes.create Decoder.io_buffer_size
 
   let make ?(encoder = encoder_ex_nihilo) ?(decoder = decoder_ex_nihilo) () =
@@ -56,37 +53,27 @@ module Context = struct
     }
 
   let encoder { encoder; _ } = encoder
-
   let decoder { decoder; _ } = decoder
 end
 
 module type S = sig
   type 'a send
-
   type 'a recv
-
   type error
-
   type encoder
-
   type decoder
 
   val encode : encoder -> 'a send -> 'a -> (unit, error) t
-
   val decode : decoder -> 'a recv -> ('a, error) t
 end
 
 module type C = sig
   type t
-
   type encoder
-
   type decoder
 
   val pp : t Fmt.t
-
   val encoder : t -> encoder
-
   val decoder : t -> decoder
 end
 
@@ -142,9 +129,7 @@ struct
         Write { k = k1; off; len; buffer }
 
   let ( let* ) m f = bind m ~f
-
   let ( let+ ) m f = bind' m ~f
-
   let ( >>= ) m f = bind m ~f
 
   let encode :
@@ -197,8 +182,6 @@ struct
     go x
 
   let return v = Return v
-
   let fail error = Error error
-
   let error_msgf fmt = Fmt.kstr (fun err -> Error (`Msg err)) fmt
 end
