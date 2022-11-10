@@ -312,7 +312,6 @@ module Encoder = struct
   type nonrec error = error
 
   let pp_error = pp_error
-
   let crlf encoder = write "\r\n" encoder
 
   let write_number n encoder =

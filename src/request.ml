@@ -135,29 +135,17 @@ module Decoder = struct
   (* According to RFC 5321. *)
 
   let trie = Hashtbl.create 16
-
   let () = Hashtbl.add trie "EHLO" `Hello
-
   let () = Hashtbl.add trie "HELO" `Hello
-
   let () = Hashtbl.add trie "MAIL" `Mail
-
   let () = Hashtbl.add trie "RCPT" `Recipient
-
   let () = Hashtbl.add trie "DATA" `Data
-
   let () = Hashtbl.add trie "." `Data_end
-
   let () = Hashtbl.add trie "RSET" `Reset
-
   let () = Hashtbl.add trie "VRFY" `Verify
-
   let () = Hashtbl.add trie "EXPN" `Expand
-
   let () = Hashtbl.add trie "HELP" `Help
-
   let () = Hashtbl.add trie "NOOP" `Noop
-
   let () = Hashtbl.add trie "QUIT" `Quit
 
   type command =
@@ -340,7 +328,6 @@ module Encoder = struct
   type nonrec error = error
 
   let pp_error = pp_error
-
   let crlf encoder = write "\r\n" encoder
 
   let hello domain encoder =

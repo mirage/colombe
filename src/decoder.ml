@@ -4,7 +4,6 @@ let pp ppf { buffer; pos; max } =
   Fmt.pf ppf "%S" (Bytes.sub_string buffer pos (max - pos))
 
 let io_buffer_size = 65536
-
 let decoder () = { buffer = Bytes.create io_buffer_size; pos = 0; max = 0 }
 
 let decoder_from_string x =

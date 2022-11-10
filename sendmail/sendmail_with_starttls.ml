@@ -12,9 +12,7 @@ module Log = (val Logs.src_log src : Logs.LOG)
 
 module type VALUE = sig
   type 'x send
-
   type 'x recv
-
   type error
 
   val pp_error : error Fmt.t
@@ -28,23 +26,14 @@ end
 
 module Value = struct
   type helo = Domain.t
-
   type mail_from = Reverse_path.t * (string * string option) list
-
   type rcpt_to = Forward_path.t * (string * string option) list
-
   type auth = Sendmail.mechanism
-
   type pp_220 = string list
-
   type pp_221 = string list
-
   type pp_250 = string list
-
   type tp_334 = string
-
   type tp_354 = string list
-
   type code = int * string list
 
   type error =
@@ -61,8 +50,7 @@ module Value = struct
         Fmt.pf ppf "Unexpected response %3d: %a" code
           Fmt.(Dump.list string)
           txts
-    | `Invalid_base64_value str ->
-        Fmt.pf ppf "Invalid Base64 value: %S" str
+    | `Invalid_base64_value str -> Fmt.pf ppf "Invalid Base64 value: %S" str
     | `Invalid_login_challenge str ->
         Fmt.pf ppf "Invalid login challenge: %S" str
 
@@ -133,29 +121,30 @@ module Value = struct
       | PP_220, `PP_220 txts -> Return txts
       | PP_221, `PP_221 txts -> Return txts
       | PP_250, `PP_250 txts -> Return txts
-      | TP_334, `Other (334, txts) ->
-        ( match Base64.decode (String.concat "" txts) with
-        | Ok payload -> Return payload
-        | Error _ -> Error (`Invalid_base64_value (String.concat "" txts)) )
+      | TP_334, `Other (334, txts) -> (
+          match Base64.decode (String.concat "" txts) with
+          | Ok payload -> Return payload
+          | Error _ -> Error (`Invalid_base64_value (String.concat "" txts)))
       | TP_354, `TP_354 txts -> Return txts
       | Code, `Other v -> Return v
       | Code, `PN_501 txts -> Return (501, txts)
       | Code, `PN_504 txts -> Return (504, txts)
       | Code, `PP_250 txts -> Return (250, txts)
-      | Response_or w, v ->
-        ( match w, v with
-        | PP_220, `PP_220 txts -> Return (Ok txts)
-        | PP_221, `PP_221 txts -> Return (Ok txts)
-        | PP_250, `PP_250 txts -> Return (Ok txts)
-        | TP_334, `Other (334, txts) ->
-          ( match Base64.decode (String.concat "" txts) with
-          | Ok payload -> Return (Ok payload)
-          | Error _ -> Error (`Invalid_base64_value (String.concat "" txts)) )
-        | TP_354, `TP_354 txts -> Return (Ok txts)
-        | _, v ->
-          let code = Reply.code v in
-          let txts = Reply.lines v in
-          Return (Error (code, txts)) )
+      | Response_or w, v -> (
+          match (w, v) with
+          | PP_220, `PP_220 txts -> Return (Ok txts)
+          | PP_221, `PP_221 txts -> Return (Ok txts)
+          | PP_250, `PP_250 txts -> Return (Ok txts)
+          | TP_334, `Other (334, txts) -> (
+              match Base64.decode (String.concat "" txts) with
+              | Ok payload -> Return (Ok payload)
+              | Error _ -> Error (`Invalid_base64_value (String.concat "" txts))
+              )
+          | TP_354, `TP_354 txts -> Return (Ok txts)
+          | _, v ->
+              let code = Reply.code v in
+              let txts = Reply.lines v in
+              Return (Error (code, txts)))
       | _, _ ->
           Log.err (fun m ->
               m "Unexpected valid value: witness:%a value:%a" pp_witness w
@@ -173,16 +162,13 @@ end
 
 module Flow = struct
   type t = unit
-
   type error = |
-
   type +'a io = { run : 'r. ('a -> ('r, error) State.t) -> ('r, error) State.t }
 
   let bind : 'a io -> ('a -> 'b io) -> 'b io =
    fun { run = t } f -> { run = (fun k -> t (fun x -> (f x).run k)) }
 
   let return x = { run = (fun k -> k x) }
-
   let map f t = bind t (fun x -> return (f x))
 
   let fully_write () buffer off len =
@@ -230,7 +216,6 @@ module Context_with_tls = struct
   }
 
   type encoder = t
-
   type decoder = t
 
   let pp ppf t =
@@ -238,9 +223,7 @@ module Context_with_tls = struct
       t.context
 
   let encoder x = x
-
   let decoder x = x
-
   let queue_ex_nihilo () = Ke.Rke.create ~capacity:0x1000 Bigarray.char
 
   let make ?encoder ?decoder ?(queue = queue_ex_nihilo) () =
@@ -275,7 +258,6 @@ end
 
 module type S = sig
   type 'x send
-
   type 'x recv
 
   module Value : sig
@@ -291,7 +273,6 @@ module type S = sig
   val pp_error : error Fmt.t
 
   type encoder
-
   type decoder
 
   val starttls_as_client :
@@ -301,9 +282,7 @@ module type S = sig
     decoder -> Tls.Config.server -> (unit, [> error ]) State.t
 
   val close : encoder -> (unit, [> error ]) State.t
-
   val encode : encoder -> 'a send -> 'a -> (unit, [> error ]) State.t
-
   val decode : decoder -> 'a recv -> ('a, [> error ]) State.t
 end
 
@@ -315,7 +294,6 @@ module Make_with_tls (Value : VALUE) = struct
     | `Tls_closed ]
 
   type encoder = Context_with_tls.t
-
   type decoder = Context_with_tls.t
 
   let pp_error ppf = function
@@ -328,7 +306,6 @@ module Make_with_tls (Value : VALUE) = struct
     | `Tls_closed -> Fmt.string ppf "TLS closed by peer"
 
   type 'x send = 'x Value.send
-
   type 'x recv = 'x Value.recv
 
   let rec pipe :
@@ -461,8 +438,12 @@ let username_challenge_or_quit ctx txts =
   let open Monad in
   match Base64.decode (String.concat "" txts) with
   | Ok "User Name" | Ok "Username:" -> return ()
-  | Ok challenge -> properly_quit_and_fail ctx (`Protocol (`Protocol (`Invalid_login_challenge challenge)))
-  | Error _ -> properly_quit_and_fail ctx (`Protocol (`Protocol (`Invalid_base64_value (String.concat "" txts))))
+  | Ok challenge ->
+      properly_quit_and_fail ctx
+        (`Protocol (`Protocol (`Invalid_login_challenge challenge)))
+  | Error _ ->
+      properly_quit_and_fail ctx
+        (`Protocol (`Protocol (`Invalid_base64_value (String.concat "" txts))))
 
 let auth ctx mechanism info =
   let open Monad in
@@ -477,22 +458,29 @@ let auth ctx mechanism info =
       | 504 -> properly_quit_and_fail ctx `Unsupported_mechanism
       | 538 -> properly_quit_and_fail ctx `Encryption_required
       | 534 -> properly_quit_and_fail ctx `Weak_mechanism
-      | 334 ->
-        username_challenge_or_quit ctx txts >>= fun () ->
-        let payload = Base64.encode_string ~pad:true username in
-        send ctx Value.Payload payload >>= fun () ->
-        ( recv ctx (Value.Response_or Value.TP_334) >>= function
-        | Ok "Password" | Ok "Password:" ->
-          let payload = Base64.encode_string ~pad:true password in
+      | 334 -> (
+          username_challenge_or_quit ctx txts >>= fun () ->
+          let payload = Base64.encode_string ~pad:true username in
           send ctx Value.Payload payload >>= fun () ->
-          ( recv ctx Value.Code >>= function
-          | 235, _txts -> return `Authenticated
-          | 501, _txts -> properly_quit_and_fail ctx `Authentication_rejected
-          | 535, _txts -> properly_quit_and_fail ctx `Authentication_failed
-          | code, txts -> fail (`Protocol (`Protocol (`Unexpected_response (code, txts)))))
-        | Ok challenge -> properly_quit_and_fail ctx (`Protocol (`Protocol (`Invalid_login_challenge challenge)))
-        | Error (_code, _txts) -> properly_quit_and_fail ctx `Authentication_failed )
-      | code -> fail (`Protocol (`Protocol (`Unexpected_response (code, txts)))))
+          recv ctx (Value.Response_or Value.TP_334) >>= function
+          | Ok "Password" | Ok "Password:" -> (
+              let payload = Base64.encode_string ~pad:true password in
+              send ctx Value.Payload payload >>= fun () ->
+              recv ctx Value.Code >>= function
+              | 235, _txts -> return `Authenticated
+              | 501, _txts ->
+                  properly_quit_and_fail ctx `Authentication_rejected
+              | 535, _txts -> properly_quit_and_fail ctx `Authentication_failed
+              | code, txts ->
+                  fail
+                    (`Protocol (`Protocol (`Unexpected_response (code, txts)))))
+          | Ok challenge ->
+              properly_quit_and_fail ctx
+                (`Protocol (`Protocol (`Invalid_login_challenge challenge)))
+          | Error (_code, _txts) ->
+              properly_quit_and_fail ctx `Authentication_failed)
+      | code -> fail (`Protocol (`Protocol (`Unexpected_response (code, txts))))
+      )
   | Sendmail.PLAIN -> (
       let* code, txts =
         send ctx Value.Auth mechanism >>= fun () -> recv ctx Value.Code in
@@ -531,15 +519,10 @@ let auth ctx mechanism info =
       | code -> Error (`Tls (`Protocol (`Unexpected_response (code, txts)))))
 
 type domain = Sendmail.domain
-
 type reverse_path = Sendmail.reverse_path
-
 type forward_path = Sendmail.forward_path
-
 type authentication = Sendmail.authentication
-
 type mechanism = Sendmail.mechanism
-
 type ('a, 's) stream = unit -> ('a option, 's) io
 
 type error =
@@ -572,7 +555,6 @@ let pp_error ppf = function
   | `STARTTLS_unavailable -> Fmt.pf ppf "STARTTLS unavailable"
 
 let has_8bit_mime_transport_extension = List.exists (( = ) "8BITMIME")
-
 let has_starttls = List.exists (( = ) "STARTTLS")
 
 (* XXX(dinosaure): [m0] IS [Sendmail.m0] + [STARTTLS], we should functorize it over

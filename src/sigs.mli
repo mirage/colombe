@@ -3,7 +3,6 @@ module type FUNCTOR = sig
 end
 
 type (+'a, 't) io
-
 type ('l, 'r) either = L of 'l | R of 'r
 
 type 't impl = {
@@ -18,11 +17,9 @@ type ('flow, 's) rdwr = {
 
 module type X = sig
   type +'a s
-
   type t
 
   external inj : 'a s -> ('a, t) io = "%identity"
-
   external prj : ('a, t) io -> 'a s = "%identity"
 end
 

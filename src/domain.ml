@@ -56,13 +56,9 @@ module Decoder = struct
   open Angstrom
 
   let ( or ) a b x = a x || b x
-
   let is_alpha = function 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false
-
   let is_digit = function '0' .. '9' -> true | _ -> false
-
   let is_dash = ( = ) '-'
-
   let let_dig = satisfy (is_alpha or is_digit)
 
   (* XXX(dinosaure): Ldh-str = *( ALPHA / DIGIT / "-" ) Let-dig
@@ -116,7 +112,6 @@ module Decoder = struct
     | None -> fail "ipv6_addr"
 
   let ipv6_address_literal = string "IPv6:" *> ipv6_addr
-
   let failf fmt = Fmt.kstr fail fmt
 
   let ldh_str =
@@ -163,9 +158,7 @@ module Encoder = struct
 end
 
 let of_string = Decoder.of_string
-
 let of_string_exn = Decoder.of_string_exn
-
 let to_string = Encoder.to_string
 
 exception Break
@@ -206,7 +199,6 @@ let a = atom_exn
 
 module Peano = struct
   type z = Z
-
   type 'a s = S
 end
 
@@ -233,9 +225,7 @@ type 'a w =
   | WIPv6 : Ipaddr.V6.t w
 
 let domain = WDomain
-
 let ipv4 = WIPv4
-
 let ipv6 = WIPv6
 
 let make : type a. a w -> a -> (t, [> `Msg of string ]) result =

@@ -366,8 +366,7 @@ let test_8 () =
     let hd0 =
       let content0 =
         Content_type.(
-          make `Text
-            (Subtype.v `Text "plain")
+          make `Text (Subtype.v `Text "plain")
             Parameters.(of_list [ (k "charset", v "utf-8") ])) in
       Header.of_list
         Field.
@@ -378,8 +377,7 @@ let test_8 () =
     let hd1 =
       let content1 =
         Content_type.(
-          make `Text
-            (Subtype.v `Text "plain")
+          make `Text (Subtype.v `Text "plain")
             Parameters.(of_list [ (k "charset", v "utf-8") ])) in
       Header.of_list
         Field.
@@ -564,8 +562,11 @@ let test_11 () =
         "QUIT";
       ] in
   let authentication =
-    { Sendmail.mechanism = LOGIN; username = "tim"; password = "tanstaaftanstaaf" }
-  in
+    {
+      Sendmail.mechanism = LOGIN;
+      username = "tim";
+      password = "tanstaaftanstaaf";
+    } in
   let fiber =
     Sendmail.sendmail unix rdwr () ctx
       ~domain:(Colombe.Domain.Domain [ "gmail"; "com" ])
