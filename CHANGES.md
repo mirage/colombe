@@ -1,3 +1,8 @@
+### v0.7.0 2022-11-30 Paris (France)
+
+- Implement the `LOGIN` mechanism when we want to send an email (@dinosaure, issued by @aronerben & @mabiede, #60, #61)
+- Update the codebase with `ocamlformat` (@dinosaure, #62, #64)
+
 ### v0.6.0 2022-01-03 Paris (France)
 
 - Better implementation of `STARTTLS` (@dinosaure, #50)
