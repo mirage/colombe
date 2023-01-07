@@ -301,6 +301,16 @@ module Decoder = struct
     then safe (request ?relax) decoder
     else prompt ?relax (request ?relax) decoder
 
+  let line decoder =
+    let k decoder =
+      let raw_eol, off, len = peek_while_eol ~relax:false decoder in
+      let v = without_eol (raw_eol, off, len) in
+      decoder.pos <- decoder.pos + len ;
+      return v decoder in
+    if at_least_one_line ~relax:false decoder
+    then safe k decoder
+    else prompt ~relax:false k decoder
+
   let of_string x =
     let decoder = decoder_from_string x in
     let go x : (t, [> error ]) result =

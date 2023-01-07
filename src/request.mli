@@ -27,6 +27,7 @@ module Decoder : sig
   val pp_error : error Fmt.t
   val add_extension : string -> unit
   val request : ?relax:bool -> Decoder.decoder -> (t, [> error ]) Decoder.state
+  val line : Decoder.decoder -> (string, [> error ]) Decoder.state
   val of_string : string -> (t, [> error ]) result
   val of_string_raw : string -> int ref -> (t, [> error ]) result
 end
