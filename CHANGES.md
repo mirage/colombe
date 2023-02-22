@@ -1,3 +1,8 @@
+### v0.8.0 2023-02-20 Paris (France)
+
+- Provide a basic line decoder (#66, @dinosaure)
+- Upgrade `sendmail-lwt` to `tls.0.16.0` (#67, @dinosaure)
+
 ### v0.7.0 2022-11-30 Paris (France)
 
 - Implement the `LOGIN` mechanism when we want to send an email (@dinosaure, issued by @aronerben & @mabiede, #60, #61)
