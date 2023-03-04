@@ -6,6 +6,9 @@ module Option = struct
 end
 
 type 'a stream = unit -> 'a option
+
+let error_msgf fmt = Format.kasprintf (fun msg -> Error (`Msg msg)) fmt
+
 type protocol = [ `ESMTP | `SMTP | `Atom of string ]
 
 (* TODO(dinosaure): according to RFC3848, we should add:
@@ -116,7 +119,7 @@ let pp_id ppf = function
 let pp_for = Path.pp
 
 let pp ppf t =
-  let ptime, tz_offset_s = (Rresult.R.get_ok <.> Date.to_ptime) t.date_time in
+  let ptime, tz_offset_s = (Result.get_ok <.> Date.to_ptime) t.date_time in
   Fmt.pf ppf
     "from: %a@\n\
      by:   %a@\n\
@@ -402,8 +405,8 @@ let of_stream stream =
               | Error _err -> go acc
             else go acc
         | _ -> go acc)
-    | `Malformed err -> Rresult.R.error_msg err
-    | `End rest -> Rresult.R.ok (rest, List.rev acc)
+    | `Malformed err -> error_msgf "%s" err
+    | `End rest -> Ok (rest, List.rev acc)
     | `Await ->
         let buf, off, len =
           match stream () with
