@@ -78,4 +78,4 @@ module Encoder : sig
 end
 
 val of_stream :
-  (string * int * int) stream -> (string * t list, [> Rresult.R.msg ]) result
+  (string * int * int) stream -> (string * t list, [> `Msg of string ]) result
