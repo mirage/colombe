@@ -302,7 +302,8 @@ module Make_with_tls (Value : VALUE) = struct
         Fmt.pf ppf "TLS alert: %s" (Tls.Packet.alert_type_to_string alert)
     | `Tls_failure err ->
         Fmt.pf ppf "TLS failure: %s"
-          (Tls.Packet.alert_type_to_string (snd (Tls.Engine.alert_of_failure err)))
+          (Tls.Packet.alert_type_to_string
+             (snd (Tls.Engine.alert_of_failure err)))
     | `Tls_closed -> Fmt.string ppf "TLS closed by peer"
 
   type 'x send = 'x Value.send
