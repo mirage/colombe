@@ -142,15 +142,15 @@ let results =
             },
           [] );
     `Data
-    (* ; `Text "Date: Thu, 21 May 1998 05:33:29 -0700"
-       ; `Text "From: John Q. Public <JQP@bar.com>"
-       ; `Text "Subject: The Next Meeting of the Board"
-       ; `Text "To: Jones@xyz.com"
-       ; `Text "Bill:"
-       ; `Text "The next meeting of the board of directors will be"
-       ; `Text "on Tuesday."
-       ; `Text "John."
-       ; `TextEnd *);
+      (* ; `Text "Date: Thu, 21 May 1998 05:33:29 -0700"
+         ; `Text "From: John Q. Public <JQP@bar.com>"
+         ; `Text "Subject: The Next Meeting of the Board"
+         ; `Text "To: Jones@xyz.com"
+         ; `Text "Bill:"
+         ; `Text "The next meeting of the board of directors will be"
+         ; `Text "on Tuesday."
+         ; `Text "John."
+         ; `TextEnd *);
     `Quit;
     `Hello Domain.(Domain [ "foo"; "com" ]);
     `Mail
@@ -171,17 +171,17 @@ let results =
             },
           [] );
     `Data
-    (* ; `Text "Received: from bar.com by foo.com ; Thu, 21 May 1998"
-       ; `Text "    05:33:29 -0700"
-       ; `Text "Date: Thu, 21 May 1998 05:33:22 -0700"
-       ; `Text "From: John Q. Public <JQP@bar.com>"
-       ; `Text "Subject:  The Next Meeting of the Board"
-       ; `Text "To: Jones@xyz.com"
-       ; `Text "Bill:"
-       ; `Text "The next meeting of the board of directors will be"
-       ; `Text "on Tuesday."
-       ; `Text "                        John."
-       ; `TextEnd *);
+      (* ; `Text "Received: from bar.com by foo.com ; Thu, 21 May 1998"
+         ; `Text "    05:33:29 -0700"
+         ; `Text "Date: Thu, 21 May 1998 05:33:22 -0700"
+         ; `Text "From: John Q. Public <JQP@bar.com>"
+         ; `Text "Subject:  The Next Meeting of the Board"
+         ; `Text "To: Jones@xyz.com"
+         ; `Text "Bill:"
+         ; `Text "The next meeting of the board of directors will be"
+         ; `Text "on Tuesday."
+         ; `Text "                        John."
+         ; `TextEnd *);
     `Quit;
     `Hello Domain.(Domain [ "bar"; "com" ]);
     `Verify "Crispin";
