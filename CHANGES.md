@@ -1,3 +1,8 @@
+### v0.8.1 2024-04-22 Paris (France)
+
+- Upgrade to `tls.0.17.4` (#71, @dinosaure)
+- Upgrade to `ocamlformat.0.26.1` (#72, @dinosaure)
+
 ### v0.8.0 2023-02-20 Paris (France)
 
 - Provide a basic line decoder (#66, @dinosaure)
