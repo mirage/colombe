@@ -1,5 +1,3 @@
-type error = Sendmail.error
-
 val sendmail :
   ?encoder:(unit -> bytes) ->
   ?decoder:(unit -> bytes) ->
@@ -11,7 +9,7 @@ val sendmail :
   Colombe.Reverse_path.t ->
   Colombe.Forward_path.t list ->
   (unit -> (string * int * int) option Lwt.t) ->
-  (unit, error) result Lwt.t
+  (unit, [ Sendmail.error | `Msg of string ]) result Lwt.t
 (** [sendmail ~hostname ?port ~domain ~authenticator ?authentication sender
    recipients mail]
     where:
@@ -104,7 +102,7 @@ val sendmail_with_starttls :
   Colombe.Reverse_path.t ->
   Colombe.Forward_path.t list ->
   (unit -> (string * int * int) option Lwt.t) ->
-  (unit, Sendmail_with_starttls.error) result Lwt.t
+  (unit, [ Sendmail_with_starttls.error | `Msg of string ]) result Lwt.t
 (** [sendmail_with_starttls] is {!sendmail} but a part of the communication is
     insecure. Usually, a SMTP service provides 2 submission services:
 
