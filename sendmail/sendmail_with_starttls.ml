@@ -162,7 +162,7 @@ end
 
 module Flow = struct
   type t = unit
-  type error = |
+  type error = [ `Closed ]
   type +'a io = { run : 'r. ('a -> ('r, error) State.t) -> ('r, error) State.t }
 
   let bind : 'a io -> ('a -> 'b io) -> 'b io =
@@ -170,8 +170,11 @@ module Flow = struct
 
   let return x = { run = (fun k -> k x) }
   let map f t = bind t (fun x -> return (f x))
+  let pp_error _ppf `Closed = assert false
 
-  let fully_write () buffer off len =
+  let write () ?(off = 0) ?len buffer =
+    let len =
+      match len with None -> String.length buffer - off | Some len -> len in
     {
       run =
         (fun k1 ->
@@ -184,7 +187,9 @@ module Flow = struct
           Write { buffer; off; len; k = k0 off len });
     }
 
-  let read () buffer off len =
+  let read () ?(off = 0) ?len buffer =
+    let len =
+      match len with None -> Bytes.length buffer - off | Some len -> len in
     {
       run =
         (fun k1 ->
@@ -203,7 +208,7 @@ module Flow = struct
     | Read { k; buffer; off; len } -> Read { k = join <.> k; buffer; off; len }
     | Return (Ok v) -> Return v
     | Return (Error err) -> Error err
-    | Error _ -> .
+    | Error `Closed -> assert false
 end
 
 module StartTLS = Tls_io.Make (Flow)
@@ -321,26 +326,25 @@ module Make_with_tls (Value : VALUE) = struct
         match fiber with
         | Read { k; _ } -> k `End |> State.to_result
         | Write { k; buffer; off; len } -> (
-            let cs = Cstruct.of_string buffer ~off ~len in
-            let { Flow.run } = StartTLS.write tls cs in
+            let str = String.sub buffer off len in
+            let { Flow.run } = StartTLS.write tls str in
             run @@ function
             | Ok () -> k len |> State.to_result
-            | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
-            | Error (StartTLS.Failure failure) ->
+            | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
+            | Error (`Tls_failure failure) ->
                 Return (Error (`Tls_failure failure))
-            | Error (StartTLS.Flow_error _) -> .
-            | Error StartTLS.Closed -> Return (Error `Tls_closed))
+            | Error (`Flow `Closed) -> assert false
+            | Error `Closed -> Return (Error `Tls_closed))
         | Return v -> Return (Ok v)
         | Error err -> Return (Error err))
-    | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
-    | Error (StartTLS.Failure failure) -> Return (Error (`Tls_failure failure))
-    | Error (StartTLS.Flow_error _) -> .
-    | Error StartTLS.Closed -> Return (Error `Tls_closed)
+    | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
+    | Error (`Tls_failure failure) -> Return (Error (`Tls_failure failure))
+    | Error (`Flow `Closed) -> assert false
+    | Error `Closed -> Return (Error `Tls_closed)
     | Ok (`Data cs) -> (
         let blit src src_off dst dst_off len =
-          let dst = Cstruct.of_bigarray dst ~off:dst_off ~len in
-          Cstruct.blit src src_off dst 0 len in
-        Ke.Rke.N.push queue ~blit ~length:Cstruct.length cs ;
+          Bigstringaf.blit_from_string src ~src_off dst ~dst_off ~len in
+        Ke.Rke.N.push queue ~blit ~length:String.length cs ;
 
         match fiber with
         | Read { buffer; off; len; k } -> (
@@ -358,15 +362,15 @@ module Make_with_tls (Value : VALUE) = struct
                 run (pipe tls queue fiber)
             | fiber -> State.to_result fiber)
         | Write { k; buffer; off; len } -> (
-            let cs = Cstruct.of_string buffer ~off ~len in
-            let { Flow.run } = StartTLS.write tls cs in
+            let str = String.sub buffer off len in
+            let { Flow.run } = StartTLS.write tls str in
             run @@ function
-            | Ok () -> pipe tls queue (k len) (Ok (`Data Cstruct.empty))
-            | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
-            | Error (StartTLS.Failure failure) ->
+            | Ok () -> pipe tls queue (k len) (Ok (`Data ""))
+            | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
+            | Error (`Tls_failure failure) ->
                 Return (Error (`Tls_failure failure))
-            | Error (StartTLS.Flow_error _) -> .
-            | Error StartTLS.Closed -> Return (Error `Tls_closed))
+            | Error (`Flow `Closed) -> assert false
+            | Error `Closed -> Return (Error `Tls_closed))
         | Return v -> Return (Ok v)
         | Error err -> Return (Error err))
 
@@ -376,7 +380,7 @@ module Make_with_tls (Value : VALUE) = struct
     | None -> Value.encode_without_tls ctx.context.encoder w v
     | Some tls ->
         let fiber = Value.encode_without_tls ctx.context.encoder w v in
-        pipe tls ctx.queue fiber (Ok (`Data Cstruct.empty)) |> Flow.join
+        pipe tls ctx.queue fiber (Ok (`Data "")) |> Flow.join
 
   let decode : type a. decoder -> a recv -> (a, [> error ]) t =
    fun ctx w ->
@@ -384,30 +388,30 @@ module Make_with_tls (Value : VALUE) = struct
     | None -> Value.decode_without_tls ctx.context.decoder w
     | Some tls ->
         let fiber = Value.decode_without_tls ctx.context.decoder w in
-        pipe tls ctx.queue fiber (Ok (`Data Cstruct.empty)) |> Flow.join
+        pipe tls ctx.queue fiber (Ok (`Data "")) |> Flow.join
 
   let starttls_as_client (ctx : Context_with_tls.t) cfg =
-    let { Flow.run } = StartTLS.init_client cfg () in
+    let { Flow.run } = StartTLS.client_of_flow cfg () in
     (run @@ function
      | Ok tls ->
          ctx.tls <- Some tls ;
          Return (Ok ())
-     | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
-     | Error (StartTLS.Failure failure) -> Return (Error (`Tls_failure failure))
-     | Error (StartTLS.Flow_error _) -> .
-     | Error StartTLS.Closed -> Return (Error `Tls_closed))
+     | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
+     | Error (`Tls_failure failure) -> Return (Error (`Tls_failure failure))
+     | Error (`Flow `Closed) -> assert false
+     | Error `Closed -> Return (Error `Tls_closed))
     |> Flow.join
 
   let starttls_as_server (ctx : Context_with_tls.t) cfg =
-    let { Flow.run } = StartTLS.init_server cfg () in
+    let { Flow.run } = StartTLS.server_of_flow cfg () in
     (run @@ function
      | Ok tls ->
          ctx.tls <- Some tls ;
          Return (Ok ())
-     | Error (StartTLS.Alert alert) -> Return (Error (`Tls_alert alert))
-     | Error (StartTLS.Failure failure) -> Return (Error (`Tls_failure failure))
-     | Error (StartTLS.Flow_error _) -> .
-     | Error StartTLS.Closed -> Return (Error `Tls_closed))
+     | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
+     | Error (`Tls_failure failure) -> Return (Error (`Tls_failure failure))
+     | Error (`Flow `Closed) -> assert false
+     | Error `Closed -> Return (Error `Tls_closed))
     |> Flow.join
 
   let close (ctx : Context_with_tls.t) =
@@ -628,7 +632,7 @@ let run :
     | Error err -> return (Error err : ('a, 'err) result) in
   go m
 
-let _dot = Cstruct.of_string "."
+let _dot = "."
 
 let sendmail ({ bind; return } as state) rdwr flow ctx mail =
   let ( >>= ) = bind in
@@ -644,7 +648,7 @@ let sendmail ({ bind; return } as state) rdwr flow ctx mail =
         mail () >>= function
         | None -> return (Ok ())
         | Some (buf, off, len) -> (
-            let raw = Cstruct.of_string buf ~off ~len in
+            let raw = String.sub buf off len in
             let raw =
               if len >= 1 && buf.[off] = '.' then [ _dot; raw ] else [ raw ]
             in
@@ -652,12 +656,12 @@ let sendmail ({ bind; return } as state) rdwr flow ctx mail =
             let m =
               (run' @@ function
                | Ok () -> Return (Ok ())
-               | Error (StartTLS.Alert alert) ->
+               | Error (`Tls_alert alert) ->
                    Return (Error (`Tls (`Tls_alert alert)))
-               | Error (StartTLS.Failure failure) ->
+               | Error (`Tls_failure failure) ->
                    Return (Error (`Tls (`Tls_failure failure)))
-               | Error (StartTLS.Flow_error _) -> .
-               | Error StartTLS.Closed -> Return (Error (`Tls `Tls_closed)))
+               | Error (`Flow `Closed) -> assert false
+               | Error `Closed -> Return (Error (`Tls `Tls_closed)))
               |> Flow.join in
             run state rdwr flow m >>= function
             | Ok () -> go ()
