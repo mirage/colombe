@@ -1,7 +1,7 @@
 opam-version: "2.0"
 license:      "MIT"
-authors:      [ "Gwenaëlle Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
-maintainer:   [ "Gwenaëlle Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
+authors:      [ "Gwenaëlle Lecat <gwenaelle@osau.re>" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
+maintainer:   [ "Gwenaëlle Lecat <gwenaelle@osau.re>" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
 homepage:     "https://github.com/mirage/colombe"
 bug-reports:  "https://github.com/mirage/colombe/issues"
 dev-repo:     "git+https://github.com/mirage/colombe.git"
