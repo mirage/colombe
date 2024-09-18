@@ -1,3 +1,7 @@
+### v0.9.0 2024-09-18 Paris (France)
+
+- Upgrade to `tls.1.0.0` (#74, @dinosaure, @hannesm)
+
 ### v0.8.1 2024-04-22 Paris (France)
 
 - Upgrade to `tls.0.17.4` (#71, @dinosaure)
