@@ -577,8 +577,30 @@ let m0 ctx config ?authentication ~domain sender recipients =
   let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
   let has_starttls = has_starttls txts in
 
-  if not has_starttls
+  if (not has_starttls) && Option.is_some authentication
   then properly_quit_and_fail ctx `STARTTLS_unavailable
+  else if not has_starttls
+  then
+    let has_8bit_mime_transport_extension =
+      has_8bit_mime_transport_extension txts in
+    let parameters =
+      if has_8bit_mime_transport_extension
+      then [ ("BODY", Some "8BITMIME") ]
+      else [] in
+    let* code, txts =
+      send ctx Value.Mail_from (sender, parameters) >>= fun () ->
+      recv ctx Value.Code in
+    let rec go = function
+      | [] ->
+          send ctx Value.Data () >>= fun () ->
+          recv ctx Value.TP_354 >>= fun _txts -> return ()
+      | x :: r ->
+          send ctx Value.Rcpt_to (x, []) >>= fun () ->
+          recv ctx Value.PP_250 >>= fun _txts -> go r in
+    match code with
+    | 250 -> go recipients
+    | 530 -> properly_quit_and_fail ctx `Authentication_required
+    | _ -> fail (`Protocol (`Unexpected_response (code, txts)))
   else
     let* _txts =
       send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220 in
