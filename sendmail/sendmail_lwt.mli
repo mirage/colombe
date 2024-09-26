@@ -41,11 +41,14 @@
     [authentication] is {b not} specified).
 *)
 
+type destination =
+  [ `Ipaddr of Ipaddr.t | `Domain_name of [ `host ] Domain_name.t ]
+
 val submit :
   ?encoder:(unit -> bytes) ->
   ?decoder:(unit -> bytes) ->
   ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
-  hostname:'a Domain_name.t ->
+  destination:destination ->
   ?port:int ->
   domain:Colombe.Domain.t ->
   ?authenticator:X509.Authenticator.t ->
@@ -59,7 +62,7 @@ val sendmail :
   ?encoder:(unit -> bytes) ->
   ?decoder:(unit -> bytes) ->
   ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
-  hostname:'a Domain_name.t ->
+  destination:destination ->
   ?port:int ->
   domain:Colombe.Domain.t ->
   ?authenticator:X509.Authenticator.t ->
