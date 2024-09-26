@@ -1,115 +1,73 @@
-val sendmail :
-  ?encoder:(unit -> bytes) ->
-  ?decoder:(unit -> bytes) ->
-  hostname:'a Domain_name.t ->
-  ?port:int ->
-  domain:Colombe.Domain.t ->
-  authenticator:X509.Authenticator.t ->
-  ?authentication:Sendmail.authentication ->
-  Colombe.Reverse_path.t ->
-  Colombe.Forward_path.t list ->
-  (unit -> (string * int * int) option Lwt.t) ->
-  (unit, [ Sendmail.error | `Msg of string ]) result Lwt.t
-(** [sendmail ~hostname ?port ~domain ~authenticator ?authentication sender
-   recipients mail]
-    where:
+(** Sending an email with lwt.
 
-    - [hostname] is the hostname of the peer
-    - [port] the port of the SMTP peer
-    - [domain] is the domain of the sender (probably [localhost])
-    - [authenticator] is the TLS authenticator
-    - [authentication] is the username and the password of the user
-    - [sender] is the sender
-    - [recipients] are recipients of the email
-    - [mail] stream of the mail
+    There are two ways of sending an email:
+    - the first is to send an email to a service which often requires
+      authentication and allows the email to be sent back under the identity of
+      the service. For example, if I wanted to send an email under my
+      [foo@gmail.com] email address, I would {val:submit} it to [smtp.gmail.com]
+      and authenticate as [foo]. This service will send your email to its real
+      destination but under the identity of [gmail.com].
+    - the second method is to send an email under the current authority that I
+      represent (my machine). This is particularly the case on a local network
+      where I want the recipient to recognise me under my own identity without
+      going through a third party. This method does not generally require
+      authentication.
 
-    The connection already start a TLS connection to the peer. The peer is
-    probably available on [*:465] (the default of [port] argument). The [mail]
-    stream {b must} emit for each chunk a CRLF at the end (a line). As an user
-    of GMail, the call of [sendmail] looks like:
+    In other words, if you want a service to send your email, you should
+    {val:submit} it. If you simply want to send an email to a destination, you
+    should use {val:sendmail}.
 
-    {[
-      open Mrmime
+    Both methods can use TLS (directly or via STARTTLS). The submission service
+    of an authority such as [gmail.com] offers 2 ports where you can send an
+    email: [465] and [587]. The first uses TLS directly and the second uses
+    STARTTLS. It is possible, if the [authenticator] is not given not to use
+    TLS or STARTTLS but:
+    - most services will reply [`Encryption_required]
+    - it is not advisable to do this, as all your information will be in clear
+      text.
 
-      let my_domain = Colombe.Domain.of_string_exn (Unix.gethostname ())
+    If [authentication] is specified and we do not use TLS or STARTTLS, we
+    {b fail}. In this situation, if we were to continue, your password would be
+    transmitted unencrypted over the network.
 
-      let my_authentication =
-        {
-          Sendmail.username = "my_login";
-          Sendmail.password = "my_password";
-          Sendmail.mechanism = Sendmail.PLAIN;
-        }
+    For all other specified ports, we use TLS directly (and not STARTTLS) if the
+    [authenticator] is specified. The default port for submission is [465].
 
-      let sender =
-        let open Mrmime.Mailbox in
-        let v =
-          Local.[ "my"; "address"; "mail" ] @ Domain.(domain, [ "gmail"; "com" ])
-        in
-        Result.get_ok (Colombe_emile.to_reverse_path v)
-      (* "my.address.mail@gmail.com" *)
+    Simply sending an email (via {!val:sendmail}) only uses STARTTLS if the
+    [authenticator] is specified - again, [authentication] is often not required
+    to send an email to such a service. It is advisable to specify an
+    [authenticator]. Our implementation will attempt to send the email via
+    STARTTLS if it is available. Otherwise we will try to send the email (if
+    [authentication] is {b not} specified).
+*)
 
-      let destination =
-        let open Mrmime.Mailbox in
-        let v = Local.[ "to"; "joe" ] @ Domain.(domain, [ "gmail"; "com" ]) in
-        Result.get_ok (Colombe_emile.to_forward_path v)
-      (* "to.joe@gmail.com" *)
+type destination =
+  [ `Ipaddr of Ipaddr.t | `Domain_name of [ `host ] Domain_name.t ]
 
-      let run () =
-        sendmail
-          ~hostname:Domain_name.(host_exe (of_string_exn "gmail.com"))
-          ~domain:my_domain ~authentictor ~authentication sender [ destination ]
-          mail
-
-      let () =
-        match Lwt_main.run (run ()) with
-        | Ok () -> ()
-        | Error err -> Format.eprintf "%a.\n%!" Sendmail.pp_error err
-    ]}
-
-    [sendmail] does not strictly depend on [mrmime] or [emile]. However, we
-    advise to use them to produce typed and well-formed mails. [sendmail] does
-    not handle properly contents of mails as are. It just emits the stream to
-    the pipeline directly without any changes if the line does not start with a
-    dot (["."]). Otherwise, it prepends the line with a new dot (which has a
-    signification in terms of SMTP).
-
-    We assume that each call of [mail ()] gives to us a line - something which
-    ends up with CRLF (["\r\n"]). By this way, we can {i sanitize} the dot
-    character - and only on this way.
-
-    [mrmime] ensures to make on its way a stream which emits line per line. A
-    non-user of [mrmime] should be aware about this assumption.
-
-    [sendmail] starts by itself a TLS connection with the SMTP server.
-
-    The user is able to re-use pre-allocated {!Colombe.Encoder.encoder} and
-    {!Colombe.Decoder.decoder} if it wants - note that these resources can
-    {b not} be shared concurrently. These resources can be huge (see
-    {!Colombe.Encoder.io_buffer_size}/{!Colombe.Decoder.io_buffer_size}) and in
-    a server context, it can be more appropriate to pre-allocate these resources
-    and give them then to [sendmail]. By this way, the whole process will
-    allocate only minor words. *)
-
-val sendmail_with_starttls :
+val submit :
   ?encoder:(unit -> bytes) ->
   ?decoder:(unit -> bytes) ->
   ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
-  hostname:'a Domain_name.t ->
+  destination:destination ->
   ?port:int ->
   domain:Colombe.Domain.t ->
-  authenticator:X509.Authenticator.t ->
+  ?authenticator:X509.Authenticator.t ->
   ?authentication:Sendmail.authentication ->
   Colombe.Reverse_path.t ->
   Colombe.Forward_path.t list ->
   (unit -> (string * int * int) option Lwt.t) ->
-  (unit, [ Sendmail_with_starttls.error | `Msg of string ]) result Lwt.t
-(** [sendmail_with_starttls] is {!sendmail} but a part of the communication is
-    insecure. Usually, a SMTP service provides 2 submission services:
+  (unit, [> `Msg of string | Sendmail_with_starttls.error ]) result Lwt.t
 
-    - An implicitely secured one on [*:465].
-    - An explicitely secured one (with [STARTTLS]) on [*:587].
-
-    The user should use the first one but in the context of the non-existence of
-    it, the second one is available. Usage and arguments are the same. However,
-    default value of [port] is the default value of your operating system (see
-    {!Unix.getprotobyname}). *)
+val sendmail :
+  ?encoder:(unit -> bytes) ->
+  ?decoder:(unit -> bytes) ->
+  ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
+  destination:destination ->
+  ?port:int ->
+  domain:Colombe.Domain.t ->
+  ?authenticator:X509.Authenticator.t ->
+  ?authentication:Sendmail.authentication ->
+  Colombe.Reverse_path.t ->
+  Colombe.Forward_path.t list ->
+  (unit -> (string * int * int) option Lwt.t) ->
+  (unit, [> `Msg of string | Sendmail_with_starttls.error ]) result Lwt.t

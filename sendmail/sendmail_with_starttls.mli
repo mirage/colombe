@@ -23,15 +23,21 @@ end
 module type VALUE = sig
   type 'x send
   type 'x recv
-  type error
+
+  type error =
+    [ Request.Encoder.error
+    | Reply.Decoder.error
+    | `Unexpected_response of int * string list
+    | `Invalid_base64_value of string
+    | `Invalid_login_challenge of string ]
 
   val pp_error : error Fmt.t
 
   val encode_without_tls :
-    Encoder.encoder -> 'x send -> 'x -> (unit, [> `Protocol of error ]) State.t
+    Encoder.encoder -> 'x send -> 'x -> (unit, [> error ]) State.t
 
   val decode_without_tls :
-    Decoder.decoder -> 'x recv -> ('x, [> `Protocol of error ]) State.t
+    Decoder.decoder -> 'x recv -> ('x, [> error ]) State.t
 end
 
 module Value : sig
@@ -48,11 +54,16 @@ module type S = sig
   type 'x recv
 
   module Value : sig
-    type error
+    type error =
+      [ Request.Encoder.error
+      | Reply.Decoder.error
+      | `Unexpected_response of int * string list
+      | `Invalid_base64_value of string
+      | `Invalid_login_challenge of string ]
   end
 
   type error =
-    [ `Protocol of Value.error
+    [ Value.error
     | `Tls_alert of Tls.Packet.alert_type
     | `Tls_failure of Tls.Engine.failure
     | `Tls_closed ]
@@ -92,13 +103,8 @@ type authentication = Sendmail.authentication
 type ('a, 's) stream = ('a, 's) Sendmail.stream
 
 type error =
-  [ `Tls of
-    [ `Protocol of Value.error
-    | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure
-    | `Tls_closed ]
-  | `Protocol of
-    [ `Protocol of Value.error
+  [ `Protocol of
+    [ Value.error
     | `Tls_alert of Tls.Packet.alert_type
     | `Tls_failure of Tls.Engine.failure
     | `Tls_closed ]
