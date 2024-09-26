@@ -27,7 +27,6 @@ let open_sendmail_with_starttls_error = function
   | Error (#Sendmail_with_starttls.error as err) -> Error err
 
 let open_error = function Ok _ as v -> v | Error (#error as err) -> Error err
-let failwith_error_msg = function Ok v -> v | Error (`Msg msg) -> failwith msg
 
 module Rdwr (Flow : Mirage_flow.S) = struct
   let blit0 src src_off dst dst_off len =
@@ -73,12 +72,14 @@ module Rdwr (Flow : Mirage_flow.S) = struct
 end
 
 module Make
+    (Clock : Mirage_clock.PCLOCK)
     (Socket : Mirage_flow.S)
     (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Socket.flow) =
 struct
   module TCP = Rdwr (Socket)
   module Socket_tls = Tls_mirage.Make (Socket)
   module TLS = Rdwr (Socket_tls)
+  module Nss = Ca_certs_nss.Make (Clock)
 
   let tcp =
     let open Lwt_scheduler in
@@ -106,22 +107,33 @@ struct
         (fun flow buf off len -> inj (TLS.send flow buf off len));
     }
 
+  let authenticator = Lazy.from_fun Nss.authenticator
+
+  let tls_config user's_tls_config user's_authenticator =
+    match user's_tls_config with
+    | Some cfg -> Ok cfg
+    | None ->
+        let ( let* ) = Result.bind in
+        let* authenticator =
+          match (Lazy.force authenticator, user's_authenticator) with
+          | Ok authenticator, None -> Ok authenticator
+          | _, Some authenticator -> Ok authenticator
+          | (Error _ as err), None -> err in
+        Tls.Config.client ~authenticator ()
+
   let submit ?encoder ?decoder ?queue he ~destination ?port ~domain
-      ?authenticator ?authentication sender recipients mail =
+      ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
+      sender recipients mail =
     let ports = match port with None -> [ 465; 587 ] | Some port -> [ port ] in
     let mail () = Lwt_scheduler.inj (mail ()) in
+    Lwt.return (tls_config user's_tls_config user's_authenticator)
+    >>? fun tls_cfg ->
     Happy_eyeballs.connect he destination ports >>? fun ((_, port), socket) ->
     let process () =
       let protocol =
-        match (authenticator, port) with
-        | Some authenticator, 587 ->
-            `With_starttls
-              (failwith_error_msg (Tls.Config.client ~authenticator ()))
-        | Some authenticator, _ ->
-            `With_tls (failwith_error_msg (Tls.Config.client ~authenticator ()))
-        | None, _ -> `Clear in
-      match (protocol, authentication) with
-      | `With_starttls tls, _ ->
+        if port = 587 then `With_starttls tls_cfg else `With_tls tls_cfg in
+      match protocol with
+      | `With_starttls tls ->
           let flow = TCP.make socket in
           let ctx =
             Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder
@@ -131,18 +143,7 @@ struct
           |> Lwt_scheduler.prj
           >|= open_sendmail_with_starttls_error
           >|= open_error
-      | `Clear, Some _ -> Lwt.return_error `Encryption_required
-      | `Clear, None ->
-          let flow = TCP.make socket in
-          let ctx = Colombe.State.Context.make ?encoder ?decoder () in
-          Sendmail.sendmail lwt tcp flow ctx ~domain ?authentication sender
-            recipients mail
-          |> Lwt_scheduler.prj
-          >|= open_sendmail_error
-          >|= (function
-                | Error err -> Error (err :> error) | Ok value -> Ok value)
-          >|= open_error
-      | `With_tls cfg, _ ->
+      | `With_tls cfg ->
           let host =
             match Ipaddr.of_string destination with
             | Ok _ -> None
@@ -171,35 +172,22 @@ struct
         | exn -> Lwt.fail exn)
 
   let sendmail ?encoder ?decoder ?queue he ~destination ?port ~domain
-      ?authenticator ?authentication sender recipients mail =
+      ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
+      sender recipients mail =
     let ports = match port with None -> [ 25 ] | Some port -> [ port ] in
     let mail () = Lwt_scheduler.inj (mail ()) in
+    Lwt.return (tls_config user's_tls_config user's_authenticator)
+    >>? fun tls_cfg ->
     Happy_eyeballs.connect he destination ports >>? fun (_, socket) ->
     let flow = TCP.make socket in
     let process () =
-      let authenticator =
-        Option.map
-          (fun authenticator -> Tls.Config.client ~authenticator ())
-          authenticator in
-      match authenticator with
-      | Some (Error _ as err) -> Lwt.return err
-      | Some (Ok tls) ->
-          let ctx =
-            Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder
-              ?queue () in
-          Sendmail_with_starttls.sendmail lwt tcp flow ctx tls ?authentication
-            ~domain sender recipients mail
-          |> Lwt_scheduler.prj
-          >|= open_sendmail_with_starttls_error
-      | None ->
-          let ctx = Colombe.State.Context.make ?encoder ?decoder () in
-          Sendmail.sendmail lwt tcp flow ctx ~domain ?authentication sender
-            recipients mail
-          |> Lwt_scheduler.prj
-          >|= open_sendmail_error
-          >|= (function
-                | Error err -> Error (err :> error) | Ok value -> Ok value)
-          >|= open_error in
+      let ctx =
+        Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
+      in
+      Sendmail_with_starttls.sendmail lwt tcp flow ctx tls_cfg ?authentication
+        ~domain sender recipients mail
+      |> Lwt_scheduler.prj
+      >|= open_sendmail_with_starttls_error in
     Lwt.try_bind process
       (fun result -> Socket.close socket >|= fun () -> result)
       (fun exn ->

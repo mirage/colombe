@@ -51,6 +51,7 @@ val submit :
   destination:destination ->
   ?port:int ->
   domain:Colombe.Domain.t ->
+  ?cfg:Tls.Config.client ->
   ?authenticator:X509.Authenticator.t ->
   ?authentication:Sendmail.authentication ->
   Colombe.Reverse_path.t ->
@@ -65,6 +66,7 @@ val sendmail :
   destination:destination ->
   ?port:int ->
   domain:Colombe.Domain.t ->
+  ?cfg:Tls.Config.client ->
   ?authenticator:X509.Authenticator.t ->
   ?authentication:Sendmail.authentication ->
   Colombe.Reverse_path.t ->
