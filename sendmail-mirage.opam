@@ -1,0 +1,29 @@
+opam-version: "2.0"
+license:      "MIT"
+authors:      [ "Gwenaëlle Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
+maintainer:   [ "Gwenaëlle Lecat" "Romain Calascibetta <romain.calascibetta@gmail.com>" ]
+homepage:     "https://github.com/mirage/colombe"
+bug-reports:  "https://github.com/mirage/colombe/issues"
+dev-repo:     "git+https://github.com/mirage/colombe.git"
+doc:          "https://mirage.github.io/colombe/"
+synopsis:     "Implementation of the sendmail command over LWT"
+description: """A library to be able to send an email with LWT and TLS."""
+
+build: [
+  [ "dune" "build" "-p" name "-j" jobs ]
+  [ "dune" "runtest" "-p" name "-j" jobs ] {with-test}
+]
+
+depends: [
+  "ocaml" {>= "4.03.0"}
+  "dune" {>= "2.0"}
+  "sendmail" {= version}
+  "domain-name"
+  "happy-eyeballs-mirage"
+  "mirage-flow"
+  "lwt"
+  "tls" {>= "0.13.0"}
+  "tls-mirage" {>= "0.16.0"}
+  "x509" {>= "0.12.0"}
+  "alcotest" {with-test}
+]
