@@ -20,6 +20,7 @@ depends: [
   "sendmail" {= version}
   "domain-name"
   "ipaddr"
+  "ca-certs"
   "lwt"
   "tls" {>= "0.13.0"}
   "tls-lwt" {>= "0.16.0"}
