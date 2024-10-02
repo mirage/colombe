@@ -28,6 +28,8 @@ let open_sendmail_with_starttls_error = function
 
 let open_error = function Ok _ as v -> v | Error (#error as err) -> Error err
 
+exception Rdwr of string
+
 module Rdwr (Flow : Mirage_flow.S) = struct
   let blit0 src src_off dst dst_off len =
     let dst = Cstruct.of_bigarray ~off:dst_off ~len dst in
@@ -38,7 +40,7 @@ module Rdwr (Flow : Mirage_flow.S) = struct
 
   let failwith pp = function
     | Ok v -> Lwt.return v
-    | Error err -> Lwt.fail (Failure (Fmt.str "%a" pp err))
+    | Error err -> Lwt.fail (Rdwr (Fmt.str "%a" pp err))
 
   type t = {
     queue : (char, Bigarray.int8_unsigned_elt) Ke.Rke.t;
@@ -168,7 +170,7 @@ struct
       (fun exn ->
         Socket.close socket >>= fun () ->
         match exn with
-        | Failure msg -> Lwt.return_error (`Msg msg)
+        | Rdwr msg -> Lwt.return_error (`Msg msg)
         | exn -> Lwt.fail exn)
 
   let sendmail ?encoder ?decoder ?queue he ~destination ?port ~domain
@@ -193,6 +195,6 @@ struct
       (fun exn ->
         Socket.close socket >>= fun () ->
         match exn with
-        | Failure msg -> Lwt.return_error (`Msg msg)
+        | Rdwr msg -> Lwt.return_error (`Msg msg)
         | exn -> Lwt.fail exn)
 end
