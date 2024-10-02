@@ -3,14 +3,14 @@
     This module lets you send emails directly ({!val:sendmail}) or via an
     authority ({!val:submit}).
 
-    The first function is the simplest, sending an email directly to a
-    destination on port [25] (if port is not specified). By default, we always
-    try to communicate with [STARTTLS] if the service allows it. The user can
-    specify a TLS configuration or a specific [X509.Authenticator.t] (in
-    particular to accept self-signed certificates). The user can also specify
-    [authentication], which is generally {b not} required for this type of SMTP
-    service. Note that the implementation will never attempt authentication if
-    [STARTTLS] is not available - and will fail.
+    The first function is the simplest (and recommended), sending an email
+    directly to a destination on port [25] (if port is not specified). By
+    default, we always try to communicate with [STARTTLS] if the service allows
+    it. The user can specify a TLS configuration or a specific
+    [X509.Authenticator.t] (in particular to accept self-signed certificates).
+    The user can also specify [authentication], which is generally {b not}
+    required for this type of SMTP service. Note that the implementation will
+    never attempt authentication if [STARTTLS] is not available - and will fail.
 
     The second function allows you to {!val:submit} an email to an authority so
     that the authority can send your email to its destinations. By default, we
@@ -32,7 +32,7 @@
 type destination =
   [ `Ipaddr of Ipaddr.t | `Domain_name of [ `host ] Domain_name.t ]
 
-val submit :
+val sendmail :
   ?encoder:(unit -> bytes) ->
   ?decoder:(unit -> bytes) ->
   ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
@@ -47,7 +47,7 @@ val submit :
   (unit -> (string * int * int) option Lwt.t) ->
   (unit, [> `Msg of string | Sendmail_with_starttls.error ]) result Lwt.t
 
-val sendmail :
+val submit :
   ?encoder:(unit -> bytes) ->
   ?decoder:(unit -> bytes) ->
   ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
