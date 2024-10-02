@@ -23,21 +23,14 @@ end
 module type VALUE = sig
   type 'x send
   type 'x recv
-
-  type error =
-    [ Request.Encoder.error
-    | Reply.Decoder.error
-    | `Unexpected_response of int * string list
-    | `Invalid_base64_value of string
-    | `Invalid_login_challenge of string ]
+  type error
 
   val pp_error : error Fmt.t
 
   val encode_without_tls :
-    Encoder.encoder -> 'x send -> 'x -> (unit, [> error ]) State.t
+    Encoder.encoder -> 'x send -> 'x -> (unit, error) State.t
 
-  val decode_without_tls :
-    Decoder.decoder -> 'x recv -> ('x, [> error ]) State.t
+  val decode_without_tls : Decoder.decoder -> 'x recv -> ('x, error) State.t
 end
 
 module Value : sig
@@ -52,26 +45,15 @@ end
 module type S = sig
   type 'x send
   type 'x recv
-
-  module Value : sig
-    type error =
-      [ Request.Encoder.error
-      | Reply.Decoder.error
-      | `Unexpected_response of int * string list
-      | `Invalid_base64_value of string
-      | `Invalid_login_challenge of string ]
-  end
-
-  type error =
-    [ Value.error
-    | `Tls_alert of Tls.Packet.alert_type
-    | `Tls_failure of Tls.Engine.failure
-    | `Tls_closed ]
-
-  val pp_error : error Fmt.t
-
   type encoder
   type decoder
+  type value_error
+
+  type error =
+    [ `Tls_alert of Tls.Packet.alert_type
+    | `Tls_failure of Tls.Engine.failure
+    | `Tls_closed
+    | `Value of value_error ]
 
   val starttls_as_client :
     encoder -> Tls.Config.client -> (unit, [> error ]) State.t
@@ -91,7 +73,7 @@ module Make_with_tls (Value : VALUE) :
   S
     with type 'x send = 'x Value.send
      and type 'x recv = 'x Value.recv
-     and type Value.error = Value.error
+     and type value_error = Value.error
      and type encoder = Context_with_tls.encoder
      and type decoder = Context_with_tls.decoder
 

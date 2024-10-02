@@ -2,6 +2,8 @@ open Lwt.Infix
 open Colombe
 
 let ( <.> ) f g x = f (g x)
+let ( >>? ) = Lwt_result.bind
+let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 
 module Lwt_scheduler = Sigs.Make (Lwt)
 
@@ -46,8 +48,19 @@ let open_sendmail_with_starttls_error = function
   | Error (#Sendmail_with_starttls.error as err) -> Error err
 
 let open_error = function Ok _ as v -> v | Error (#error as err) -> Error err
-let failwith_error_msg = function Ok v -> v | Error (`Msg msg) -> failwith msg
-let failf fmt = Fmt.kstr (fun err -> Lwt.fail (Failure err)) fmt
+let authenticator = Lazy.from_fun Ca_certs.authenticator
+
+let tls_config user's_tls_config user's_authenticator =
+  match user's_tls_config with
+  | Some cfg -> Ok cfg
+  | None ->
+      let ( let* ) = Result.bind in
+      let* authenticator =
+        match (Lazy.force authenticator, user's_authenticator) with
+        | Ok authenticator, None -> Ok authenticator
+        | _, Some authenticator -> Ok authenticator
+        | (Error _ as err), None -> err in
+      Tls.Config.client ~authenticator ()
 
 let resolve host ?port service =
   Lwt_unix.getprotobyname "tcp" >>= fun tcp ->
@@ -55,46 +68,61 @@ let resolve host ?port service =
   >>= fun result ->
   match (result, port) with
   | [], None ->
-      failf
-        "Service %S is not recognized by your system or the host %s is \
-         unreachable"
-        service host
+      Lwt.return
+        (error_msgf
+           "Service %S is not recognized by your system or the host %s is \
+            unreachable"
+           service host)
   | [], Some port -> (
       Lwt_unix.gethostbyname host >>= function
-      | { Unix.h_addr_list = [||]; _ } -> failf "Host %s unreachable" host
+      | { Unix.h_addr_list = [||]; _ } ->
+          Lwt.return (error_msgf "Host %s unreachable" host)
       | { Unix.h_addr_list; _ } ->
-          Lwt.return (Unix.ADDR_INET (h_addr_list.(0), port)))
+          Lwt.return_ok (Unix.ADDR_INET (h_addr_list.(0), port)))
   | ai :: _, _ ->
   match (port, ai.ai_addr) with
   | Some port, Unix.ADDR_INET (inet_addr, _) ->
-      Lwt.return (Unix.ADDR_INET (inet_addr, port))
-  | _ -> Lwt.return ai.ai_addr
+      Lwt.return_ok (Unix.ADDR_INET (inet_addr, port))
+  | _ -> Lwt.return_ok ai.ai_addr
 
-let submit ?encoder ?decoder ?queue ~destination ?port ~domain ?authenticator
-    ?authentication sender recipients mail =
+let pp_addr ppf = function
+  | Unix.ADDR_INET (inet_addr, port) ->
+      Fmt.pf ppf "%s:%d" (Unix.string_of_inet_addr inet_addr) port
+  | Unix.ADDR_UNIX str -> Fmt.pf ppf "<%s>" str
+
+let connect socket addr =
+  Lwt.pick
+    [
+      Lwt_unix.sleep 5.0 >|= Fun.const `Timeout;
+      Lwt_unix.connect socket addr >|= Fun.const `Connected;
+    ]
+  >>= function
+  | `Timeout -> Lwt.return (error_msgf "Connection to %a timeout" pp_addr addr)
+  | `Connected -> Lwt.return_ok ()
+
+let submit ?encoder ?decoder ?queue ~destination ?port ~domain
+    ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
+    sender recipients mail =
   let mail () = Lwt_scheduler.inj (mail ()) in
+  Lwt.return (tls_config user's_tls_config user's_authenticator)
+  >>? fun tls_cfg ->
   let protocol =
-    match (port, authenticator) with
-    | Some 587, Some authenticator ->
-        `With_starttls
-          (failwith_error_msg (Tls.Config.client ~authenticator ()))
-    | (Some 587 | None), None -> `Clear
-    | (Some _ | None), Some authenticator ->
-        `With_tls (failwith_error_msg (Tls.Config.client ~authenticator ()))
-    | Some _, None -> `Clear in
-  match (protocol, authentication) with
-  | `With_starttls tls, _ ->
+    match port with
+    | Some 587 -> `With_starttls tls_cfg
+    | Some _ | None -> `With_tls tls_cfg in
+  match protocol with
+  | `With_starttls tls ->
       (match (destination, port) with
       | `Ipaddr ipaddr, Some port ->
-          Lwt.return (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
+          Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
       | `Ipaddr ipaddr, None ->
-          Lwt.return (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 587))
+          Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 587))
       | `Domain_name domain_name, port ->
           resolve (Domain_name.to_string domain_name) ?port "submission")
-      >>= fun addr ->
+      >>? fun addr ->
       let socket =
         Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0 in
-      Lwt_unix.connect socket addr >>= fun () ->
+      connect socket addr >>? fun () ->
       let ic = Lwt_io.of_fd ~mode:Lwt_io.Input socket in
       let oc = Lwt_io.of_fd ~mode:Lwt_io.Output socket in
       let ctx =
@@ -105,50 +133,31 @@ let submit ?encoder ?decoder ?queue ~destination ?port ~domain ?authenticator
       |> Lwt_scheduler.prj
       >|= open_sendmail_with_starttls_error
       >|= open_error
-  | `Clear, Some _ -> Lwt.return_error `Encryption_required
-  | `Clear, None ->
-      (match (destination, port) with
-      | `Ipaddr ipaddr, Some port ->
-          Lwt.return (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
-      | `Ipaddr ipaddr, None ->
-          Lwt.return (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 587))
-      | `Domain_name domain_name, port ->
-          resolve (Domain_name.to_string domain_name) ?port "submission")
-      >>= fun addr ->
-      let socket =
-        Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0 in
-      Lwt_unix.connect socket addr >>= fun () ->
-      let ic = Lwt_io.of_fd ~mode:Lwt_io.Input socket in
-      let oc = Lwt_io.of_fd ~mode:Lwt_io.Output socket in
-      let ctx = Colombe.State.Context.make ?encoder ?decoder () in
-      Sendmail.sendmail lwt rdwr { ic; oc } ctx ~domain ?authentication sender
-        recipients mail
-      |> Lwt_scheduler.prj
-      >|= open_sendmail_error
-      >|= (function Error err -> Error (err :> error) | Ok value -> Ok value)
-      >|= open_error
-  | `With_tls tls, _ ->
+  | `With_tls tls ->
       (match (destination, port) with
       | `Ipaddr ipaddr, Some port ->
           let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port) in
           let socket =
             Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0
           in
-          Lwt_unix.connect socket addr >>= fun () ->
+          connect socket addr >>? fun () ->
           Tls_lwt.Unix.client_of_fd tls socket
           >|= Tls_lwt.of_t ~close:(fun () -> Lwt_unix.close socket)
+          >|= Result.ok
       | `Ipaddr ipaddr, None ->
           let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 465) in
           let socket =
             Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0
           in
-          Lwt_unix.connect socket addr >>= fun () ->
+          connect socket addr >>? fun () ->
           Tls_lwt.Unix.client_of_fd tls socket
           >|= Tls_lwt.of_t ~close:(fun () -> Lwt_unix.close socket)
+          >|= Result.ok
       | `Domain_name domain_name, port ->
           let port = Option.value ~default:465 port in
-          Tls_lwt.connect_ext tls (Domain_name.to_string domain_name, port))
-      >>= fun (ic, oc) ->
+          Tls_lwt.connect_ext tls (Domain_name.to_string domain_name, port)
+          >|= Result.ok)
+      >>? fun (ic, oc) ->
       let ctx = Colombe.State.Context.make ?encoder ?decoder () in
       Sendmail.sendmail lwt rdwr { ic; oc } ctx ~domain ?authentication sender
         recipients mail
@@ -157,41 +166,29 @@ let submit ?encoder ?decoder ?queue ~destination ?port ~domain ?authenticator
       >|= (function Error err -> Error (err :> error) | Ok value -> Ok value)
       >|= open_error
 
-let sendmail ?encoder ?decoder ?queue ~destination ?port ~domain ?authenticator
-    ?authentication sender recipients mail =
+let sendmail ?encoder ?decoder ?queue ~destination ?port ~domain
+    ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
+    sender recipients mail =
   (match (destination, port) with
   | `Ipaddr ipaddr, Some port ->
-      Lwt.return (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
+      Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
   | `Ipaddr ipaddr, None ->
-      Lwt.return (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 25))
+      Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 25))
   | `Domain_name domain_name, port ->
       resolve (Domain_name.to_string domain_name) ?port "smtp")
-  >>= fun addr ->
+  >>? fun addr ->
   let socket =
     Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0 in
-  Lwt_unix.connect socket addr >>= fun () ->
+  connect socket addr >>? fun () ->
   let mail () = Lwt_scheduler.inj (mail ()) in
   let ic = Lwt_io.of_fd ~mode:Lwt_io.Input socket in
   let oc = Lwt_io.of_fd ~mode:Lwt_io.Output socket in
-  match
-    Option.map
-      (fun authenticator -> Tls.Config.client ~authenticator ())
-      authenticator
-  with
-  | Some (Error _ as err) -> Lwt.return err
-  | Some (Ok tls) ->
-      let ctx =
-        Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
-      in
-      Sendmail_with_starttls.sendmail lwt rdwr { ic; oc } ctx tls
-        ?authentication ~domain sender recipients mail
-      |> Lwt_scheduler.prj
-      >|= open_sendmail_with_starttls_error
-  | None ->
-      let ctx = Colombe.State.Context.make ?encoder ?decoder () in
-      Sendmail.sendmail lwt rdwr { ic; oc } ctx ~domain ?authentication sender
-        recipients mail
-      |> Lwt_scheduler.prj
-      >|= open_sendmail_error
-      >|= (function Error err -> Error (err :> error) | Ok value -> Ok value)
-      >|= open_error
+  Lwt.return (tls_config user's_tls_config user's_authenticator)
+  >>? fun tls_cfg ->
+  let ctx =
+    Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
+  in
+  Sendmail_with_starttls.sendmail lwt rdwr { ic; oc } ctx tls_cfg
+    ?authentication ~domain sender recipients mail
+  |> Lwt_scheduler.prj
+  >|= open_sendmail_with_starttls_error

@@ -1,62 +1,36 @@
 (** Sending an email with lwt.
 
-    There are two ways of sending an email:
-    - the first is to send an email to a service which often requires
-      authentication and allows the email to be sent back under the identity of
-      the service. For example, if I wanted to send an email under my
-      [foo@gmail.com] email address, I would {val:submit} it to [smtp.gmail.com]
-      and authenticate as [foo]. This service will send your email to its real
-      destination but under the identity of [gmail.com].
-    - the second method is to send an email under the current authority that I
-      represent (my machine). This is particularly the case on a local network
-      where I want the recipient to recognise me under my own identity without
-      going through a third party. This method does not generally require
-      authentication.
+    This module lets you send emails directly ({!val:sendmail}) or via an
+    authority ({!val:submit}).
 
-    In other words, if you want a service to send your email, you should
-    {val:submit} it. If you simply want to send an email to a destination, you
-    should use {val:sendmail}.
+    The first function is the simplest (and recommended), sending an email
+    directly to a destination on port [25] (if port is not specified). By
+    default, we always try to communicate with [STARTTLS] if the service allows
+    it. The user can specify a TLS configuration or a specific
+    [X509.Authenticator.t] (in particular to accept self-signed certificates).
+    The user can also specify [authentication], which is generally {b not}
+    required for this type of SMTP service. Note that the implementation will
+    never attempt authentication if [STARTTLS] is not available - and will fail.
 
-    Both methods can use TLS (directly or via STARTTLS). The submission service
-    of an authority such as [gmail.com] offers 2 ports where you can send an
-    email: [465] and [587]. The first uses TLS directly and the second uses
-    STARTTLS. It is possible, if the [authenticator] is not given not to use
-    TLS or STARTTLS but:
-    - most services will reply [`Encryption_required]
-    - it is not advisable to do this, as all your information will be in clear
-      text.
+    The second function allows you to {!val:submit} an email to an authority so
+    that the authority can send your email to its destinations. By default, we
+    use port [465] on which we directly use TLS (and not [STARTTLS]) to encrypt
+    all communications between you and the service. You can specify port [587]
+    (if the service on [465] is not available) which this time will use
+    [STARTTLS] to encrypt the communication. This service often requires
+    authentication (so that you can prove that you can use this authority). Like
+    {!val:sendmail}, if authentication is required without the communication
+    being encrypted, we will fail.
 
-    If [authentication] is specified and we do not use TLS or STARTTLS, we
-    {b fail}. In this situation, if we were to continue, your password would be
-    transmitted unencrypted over the network.
-
-    For all other specified ports, we use TLS directly (and not STARTTLS) if the
-    [authenticator] is specified. The default port for submission is [465].
-
-    Simply sending an email (via {!val:sendmail}) only uses STARTTLS if the
-    [authenticator] is specified - again, [authentication] is often not required
-    to send an email to such a service. It is advisable to specify an
-    [authenticator]. Our implementation will attempt to send the email via
-    STARTTLS if it is available. Otherwise we will try to send the email (if
-    [authentication] is {b not} specified).
-*)
+    The second function allows you to send an email under an identity other than
+    your own. In fact, when you want to send an email using the identity
+    [foo@gmail.com], you need to authenticate yourself and send the email to
+    [smtp.gmail.com] so that this service can in turn send your email to the
+    destinations (adding several pieces of information such as a DKIM
+    signature). *)
 
 type destination =
   [ `Ipaddr of Ipaddr.t | `Domain_name of [ `host ] Domain_name.t ]
-
-val submit :
-  ?encoder:(unit -> bytes) ->
-  ?decoder:(unit -> bytes) ->
-  ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
-  destination:destination ->
-  ?port:int ->
-  domain:Colombe.Domain.t ->
-  ?authenticator:X509.Authenticator.t ->
-  ?authentication:Sendmail.authentication ->
-  Colombe.Reverse_path.t ->
-  Colombe.Forward_path.t list ->
-  (unit -> (string * int * int) option Lwt.t) ->
-  (unit, [> `Msg of string | Sendmail_with_starttls.error ]) result Lwt.t
 
 val sendmail :
   ?encoder:(unit -> bytes) ->
@@ -65,6 +39,22 @@ val sendmail :
   destination:destination ->
   ?port:int ->
   domain:Colombe.Domain.t ->
+  ?cfg:Tls.Config.client ->
+  ?authenticator:X509.Authenticator.t ->
+  ?authentication:Sendmail.authentication ->
+  Colombe.Reverse_path.t ->
+  Colombe.Forward_path.t list ->
+  (unit -> (string * int * int) option Lwt.t) ->
+  (unit, [> `Msg of string | Sendmail_with_starttls.error ]) result Lwt.t
+
+val submit :
+  ?encoder:(unit -> bytes) ->
+  ?decoder:(unit -> bytes) ->
+  ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
+  destination:destination ->
+  ?port:int ->
+  domain:Colombe.Domain.t ->
+  ?cfg:Tls.Config.client ->
   ?authenticator:X509.Authenticator.t ->
   ?authentication:Sendmail.authentication ->
   Colombe.Reverse_path.t ->
