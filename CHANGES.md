@@ -1,3 +1,22 @@
+### v0.10.0 2024-10-15 Paris (France)
+
+- Be able to compose errors from sendmail packages (@dinosaure, #76)
+- Add the new package `sendmail-mirage` (@dinosaure, #77)
+- **breaking-change** Improve the `sendmail` library.
+
+  The sendmail library is able to send an email with or without STARTTLS. If
+  the user gives an authentication method (with a password), we require STARTTLS
+  in anyway. Otherwise, we return the `Encryption_required` error. By this way,
+  the `sendmail` package does not leak such information.
+
+  We also separate two kind of use about `sendmail`:
+  - the submission of an email to an authority
+  - how send an email to its destination
+
+  The second is the most basic (and probably what you want). The first is useful
+  when you want to pass through an authority (such as gmail.com or your own
+  mail exchange server) to send an email to a destination.
+
 ### v0.9.0 2024-09-18 Paris (France)
 
 - Upgrade to `tls.1.0.0` (#74, @dinosaure, @hannesm)
@@ -14,7 +33,8 @@
 
 ### v0.7.0 2022-11-30 Paris (France)
 
-- Implement the `LOGIN` mechanism when we want to send an email (@dinosaure, issued by @aronerben & @mabiede, #60, #61)
+- Implement the `LOGIN` mechanism when we want to send an email (@dinosaure,
+  issued by @aronerben & @mabiede, #60, #61)
 - Update the codebase with `ocamlformat` (@dinosaure, #62, #64)
 
 ### v0.6.0 2022-01-03 Paris (France)
@@ -23,17 +43,20 @@
 - Properly quit if the server does not implement `STARTTLS` (@dinosaure, #51)
 - Add `let+` operator which manipulate `result` type (@dinosaure, #52)
 - Upgrade `fmt.0.8.9` (@dinosaure, #53)
-- Be able to pre-allocate resources when we want to send an email (@dinosaure, #54)
+- Be able to pre-allocate resources when we want to send an email (@dinosaure,
+  #54)
 
 ### v0.5.0 2021-08-30 Paris (France)
 
 - Use `Cstruct.length` instead of `Cstruct.len` (@dinosaure, #45)
-- Let the user to emit the end of the stream (spotted by @jsthomas, @dinosaure, review @mikonieminen, #47)
+- Let the user to emit the end of the stream (spotted by @jsthomas, @dinosaure,
+  review @mikonieminen, #47)
 
 ### v0.4.2 2021-07-26 Paris (France)
 
 - Add `Path.of_string_exn` (@dinosaure, #40)
-- Be resilient about 334 argument and add regression test (@dinosaure, @jsthomas, #41)
+- Be resilient about 334 argument and add regression test (@dinosaure,
+  @jsthomas, #41)
 
 ### v0.4.1 2021-04-27 Paris (France)
 
@@ -41,13 +64,15 @@
 
 ### v0.4.0 2020-11-29 Paris (France)
 
-- Be resilient when we parse a replies (mirage/colombe#27, @dinosaure, review by @mikonieminen)
+- Be resilient when we parse a replies (mirage/colombe#27, @dinosaure, review by
+  @mikonieminen)
 - **breaking changes**
   Rename `sendmail.tls` to `sendmail.starttls`
   Rename `Sendmail_with_tls` to `Sendmail_with_starttls`
   (mirage/colombe#28, @dinosaure, issue mirage/colombe#25)
 - Handle dot special character when we transmit the mail
-  (mirage/colombe#30, @dinosaure, review by @mikonieminen, @jerben and @Julow, issue mirage/colombe#29)
+  (mirage/colombe#30, @dinosaure, review by @mikonieminen, @jerben and @Julow,
+  issue mirage/colombe#29)
 
   `sendmail` already expects a stream which emits line per line the mail
   but it sanitizes now the dot character according the SMTP protocol. If
@@ -75,7 +100,8 @@
 - Add Received encoder/decoder
 - Functorize `STARTTLS` implementation
 - Close properly a TLS connection
-- Relax SMTP parser about End-Of-Line character (be compatible with `gnutls-cli`)
+- Relax SMTP parser about End-Of-Line character (be compatible with
+  `gnutls-cli`)
 - Add tests
 - Clean the distribution
 
