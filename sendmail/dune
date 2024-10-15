@@ -17,11 +17,18 @@
  (public_name sendmail-lwt)
  (modules sendmail_lwt)
  (libraries sendmail sendmail.starttls domain-name lwt lwt.unix tls tls-lwt
-   ipaddr.unix))
+   ipaddr.unix ca-certs))
+
+(library
+ (name sendmail_miou_unix)
+ (public_name sendmail-miou-unix)
+ (modules sendmail_miou_unix)
+ (libraries sendmail sendmail.starttls domain-name miou.unix tls-miou-unix
+   ca-certs happy-eyeballs-miou-unix))
 
 (library
  (name sendmail_mirage)
  (public_name sendmail-mirage)
  (modules sendmail_mirage)
- (libraries sendmail sendmail.starttls domain-name lwt tls tls-mirage
-   happy-eyeballs-mirage))
+ (libraries sendmail sendmail.starttls domain-name ca-certs-nss lwt tls
+   tls-mirage happy-eyeballs-mirage))
