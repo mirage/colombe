@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Sendmail_miou_unix (sendmail-miou-unix.Sendmail_miou_unix)</title><meta charset="utf-8"/><link rel="stylesheet" href="../../odoc.support/odoc.css"/><meta name="generator" content="odoc 2.4.3"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><script src="../../odoc.support/highlight.pack.js"></script><script>hljs.initHighlightingOnLoad();</script></head><body class="odoc"><nav class="odoc-nav"><a href="../index.html">Up</a> – <a href="../index.html">sendmail-miou-unix</a> &#x00BB; Sendmail_miou_unix</nav><header class="odoc-preamble"><h1>Module <code><span>Sendmail_miou_unix</span></code></h1></header><div class="odoc-content"><div class="odoc-spec"><div class="spec value anchored" id="val-submit"><a href="#val-submit" class="anchor"></a><code><span><span class="keyword">val</span> submit : 
+  <span><span class="optlabel">?encoder</span>:<span>(<span>unit <span class="arrow">&#45;&gt;</span></span> bytes)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?decoder</span>:<span>(<span>unit <span class="arrow">&#45;&gt;</span></span> bytes)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?queue</span>:<span>(<span>unit <span class="arrow">&#45;&gt;</span></span> <span><span>(char, <span class="xref-unresolved">Stdlib</span>.Bigarray.int8_unsigned_elt)</span> <span class="xref-unresolved">Ke</span>.Rke.t</span>)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="xref-unresolved">Happy_eyeballs_miou_unix</span>.t <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">destination</span>:string <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?port</span>:int <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">domain</span>:<a href="../../colombe/Colombe/Domain/index.html#type-t">Colombe.Domain.t</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?cfg</span>:<span class="xref-unresolved">Tls</span>.Config.client <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?authenticator</span>:<span class="xref-unresolved">X509</span>.Authenticator.t <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?authentication</span>:<a href="../../sendmail/Sendmail/index.html#type-authentication">Sendmail.authentication</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><a href="../../colombe/Colombe/Reverse_path/index.html#type-t">Colombe.Reverse_path.t</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><span><a href="../../colombe/Colombe/Forward_path/index.html#type-t">Colombe.Forward_path.t</a> list</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span>(<span>unit <span class="arrow">&#45;&gt;</span></span> <span><span>(string * int * int)</span> option</span>)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span>(unit, <span>[&gt; <span>`Msg of string</span> <span>| <a href="../../sendmail/Sendmail_with_starttls/index.html#type-error">Sendmail_with_starttls.error</a></span> ]</span>)</span> <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div><div class="odoc-spec"><div class="spec value anchored" id="val-sendmail"><a href="#val-sendmail" class="anchor"></a><code><span><span class="keyword">val</span> sendmail : 
+  <span><span class="optlabel">?encoder</span>:<span>(<span>unit <span class="arrow">&#45;&gt;</span></span> bytes)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?decoder</span>:<span>(<span>unit <span class="arrow">&#45;&gt;</span></span> bytes)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?queue</span>:<span>(<span>unit <span class="arrow">&#45;&gt;</span></span> <span><span>(char, <span class="xref-unresolved">Stdlib</span>.Bigarray.int8_unsigned_elt)</span> <span class="xref-unresolved">Ke</span>.Rke.t</span>)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="xref-unresolved">Happy_eyeballs_miou_unix</span>.t <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">destination</span>:string <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?port</span>:int <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="label">domain</span>:<a href="../../colombe/Colombe/Domain/index.html#type-t">Colombe.Domain.t</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?cfg</span>:<span class="xref-unresolved">Tls</span>.Config.client <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?authenticator</span>:<span class="xref-unresolved">X509</span>.Authenticator.t <span class="arrow">&#45;&gt;</span></span>
+  <span><span class="optlabel">?authentication</span>:<a href="../../sendmail/Sendmail/index.html#type-authentication">Sendmail.authentication</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><a href="../../colombe/Colombe/Reverse_path/index.html#type-t">Colombe.Reverse_path.t</a> <span class="arrow">&#45;&gt;</span></span>
+  <span><span><a href="../../colombe/Colombe/Forward_path/index.html#type-t">Colombe.Forward_path.t</a> list</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span>(<span>unit <span class="arrow">&#45;&gt;</span></span> <span><span>(string * int * int)</span> option</span>)</span> <span class="arrow">&#45;&gt;</span></span>
+  <span><span>(unit, <span>[&gt; <span>`Msg of string</span> <span>| <a href="../../sendmail/Sendmail_with_starttls/index.html#type-error">Sendmail_with_starttls.error</a></span> ]</span>)</span> <span class="xref-unresolved">Stdlib</span>.result</span></span></code></div></div></div></body></html>
