@@ -548,9 +548,18 @@ let m0 ctx config ?authentication ~domain sender recipients =
           recv ctx Value.TP_354 >>= fun _txts -> return ()
       | x :: r ->
           send ctx Value.Rcpt_to (x, []) >>= fun () ->
-          recv ctx Value.PP_250 >>= fun _txts -> go r in
+          recv ctx Value.Code >>= function
+          | 250, _txts -> go r
+          | 450, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
+          | 451, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+          | 452, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+          | 455, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Unable_to_accomodate_parameters)
+          | code, txts -> fail (`Protocol (`Value (`Unexpected_response (code, txts)))) in
     match code with
     | 250 -> go recipients
+    | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+    | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+    | 455 -> properly_quit_and_fail ctx (`Temporary_failure `Unable_to_accomodate_parameters)
     | 530 -> properly_quit_and_fail ctx `Authentication_required
     | _ -> fail (`Protocol (`Value (`Unexpected_response (code, txts))))
   else
@@ -581,17 +590,32 @@ let m0 ctx config ?authentication ~domain sender recipients =
           recv ctx Value.TP_354 >>= fun _txts -> return ()
       | x :: r ->
           send ctx Value.Rcpt_to (x, []) >>= fun () ->
-          recv ctx Value.PP_250 >>= fun _txts -> go r in
+          recv ctx Value.Code >>= function
+          | 250, _txts -> go r
+          | 450, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
+          | 451, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+          | 452, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+          | 455, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Unable_to_accomodate_parameters)
+          | code, txts -> fail (`Protocol (`Value (`Unexpected_response (code, txts)))) in
     match code with
     | 250 -> go recipients
+    | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+    | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+    | 455 -> properly_quit_and_fail ctx (`Temporary_failure `Unable_to_accomodate_parameters)
     | 530 -> properly_quit_and_fail ctx `Authentication_required
     | _ -> Error (`Protocol (`Value (`Unexpected_response (code, txts))))
 
 let m1 ctx =
   let open Monad in
-  let* _txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.PP_250 in
-  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-  return ()
+  let* code, txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.Code in
+  match code with
+  | 250 ->
+    let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+    return ()
+  | 450 -> properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
+  | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+  | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+  | code -> fail (`Protocol (`Value (`Unexpected_response (code, txts))))
 
 let run :
     type s flow.
@@ -653,6 +677,18 @@ type tls =
   | `Tls_closed
   | `Tls_failure of Tls.Engine.failure ]
 
+type tmp_error =
+  [ `Mailbox_unavailable
+  | `Error_processing
+  | `Action_ignored
+  | `Unable_to_accomodate_parameters ]
+
+let pp_tmp_error ppf = function
+  | `Mailbox_unavailable -> Fmt.string ppf "Mailbox unavailable"
+  | `Error_processing -> Fmt.string ppf "Error processing"
+  | `Action_ignored -> Fmt.string ppf "Action ignored"
+  | `Unable_to_accomodate_parameters -> Fmt.string ppf "Unable to accomodate parameters"
+
 type state =
   [ `Unsupported_mechanism
   | `Encryption_required
@@ -660,7 +696,8 @@ type state =
   | `Authentication_rejected
   | `Authentication_failed
   | `Authentication_required
-  | `STARTTLS_unavailable ]
+  | `STARTTLS_unavailable
+  | `Temporary_failure of tmp_error ]
 
 type error =
   [ `Protocol of
@@ -674,7 +711,8 @@ type error =
   | `Authentication_rejected
   | `Authentication_failed
   | `Authentication_required
-  | `STARTTLS_unavailable ]
+  | `STARTTLS_unavailable
+  | `Temporary_failure of tmp_error ]
 
 let pp_error ppf = function
   | `Protocol (#Value.error as err) -> Value.pp_error ppf err
@@ -692,6 +730,7 @@ let pp_error ppf = function
   | `Authentication_failed -> Fmt.pf ppf "Authentication failed"
   | `Authentication_required -> Fmt.pf ppf "Authentication required"
   | `STARTTLS_unavailable -> Fmt.pf ppf "STARTTLS unavailable"
+  | `Temporary_failure err -> pp_tmp_error ppf err
 
 let sendmail ({ bind; return } as impl) rdwr flow context config ?authentication
     ~domain sender recipients mail : ((unit, error) result, 's) io =
