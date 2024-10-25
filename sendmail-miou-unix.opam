@@ -22,5 +22,6 @@ depends: [
   "happy-eyeballs-miou-unix"
   "tls-miou-unix" {>= "1.0.3"}
   "x509"
+  "ca-certs"
   "alcotest" {with-test}
 ]
