@@ -7,7 +7,8 @@ module Make
     ?decoder:(unit -> bytes) ->
     ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
     Happy_eyeballs.t ->
-    destination:[ `Domain_name of [ `host ] Domain_name.t | `Ipaddrs of Ipaddr.t list ] ->
+    destination:
+      [ `Domain_name of [ `host ] Domain_name.t | `Ipaddrs of Ipaddr.t list ] ->
     ?port:int ->
     domain:Colombe.Domain.t ->
     ?cfg:Tls.Config.client ->
@@ -23,7 +24,8 @@ module Make
     ?decoder:(unit -> bytes) ->
     ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
     Happy_eyeballs.t ->
-    destination:[ `Domain_name of [ `host ] Domain_name.t | `Ipaddrs of Ipaddr.t list ] ->
+    destination:
+      [ `Domain_name of [ `host ] Domain_name.t | `Ipaddrs of Ipaddr.t list ] ->
     ?port:int ->
     domain:Colombe.Domain.t ->
     ?cfg:Tls.Config.client ->

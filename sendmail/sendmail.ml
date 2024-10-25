@@ -257,7 +257,8 @@ let pp_tmp_error ppf = function
   | `Mailbox_unavailable -> Fmt.string ppf "Mailbox unavailable"
   | `Error_processing -> Fmt.string ppf "Error processing"
   | `Action_ignored -> Fmt.string ppf "Action ignored"
-  | `Unable_to_accomodate_parameters -> Fmt.string ppf "Unable to accomodate parameters"
+  | `Unable_to_accomodate_parameters ->
+      Fmt.string ppf "Unable to accomodate parameters"
 
 type error =
   [ `Protocol of Value.error
@@ -309,20 +310,28 @@ let m0 ctx ?authentication ~domain sender recipients =
     | [] ->
         send ctx Value.Data () >>= fun () ->
         recv ctx Value.TP_354 >>= fun _txts -> return ()
-    | x :: r ->
+    | x :: r -> (
         send ctx Value.Rcpt_to (x, []) >>= fun () ->
         recv ctx Value.Code >>= function
         | 250, _txts -> go r
-        | 450, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
-        | 451, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
-        | 452, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
-        | 455, _txts -> properly_quit_and_fail ctx (`Temporary_failure `Unable_to_accomodate_parameters)
-        | code, txts -> fail (`Protocol (`Unexpected_response (code, txts))) in
+        | 450, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
+        | 451, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+        | 452, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+        | 455, _txts ->
+            properly_quit_and_fail ctx
+              (`Temporary_failure `Unable_to_accomodate_parameters)
+        | code, txts -> fail (`Protocol (`Unexpected_response (code, txts))))
+  in
   match code with
   | 250 -> go recipients
   | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
   | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
-  | 455 -> properly_quit_and_fail ctx (`Temporary_failure `Unable_to_accomodate_parameters)
+  | 455 ->
+      properly_quit_and_fail ctx
+        (`Temporary_failure `Unable_to_accomodate_parameters)
   | 530 -> properly_quit_and_fail ctx `Authentication_required
   | _ -> fail (`Protocol (`Unexpected_response (code, txts)))
 
@@ -331,8 +340,8 @@ let m1 ctx =
   let* code, txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.Code in
   match code with
   | 250 ->
-    let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-    return ()
+      let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+      return ()
   | 450 -> properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
   | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
   | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
