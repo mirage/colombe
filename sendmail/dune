@@ -9,7 +9,7 @@
  (name sendmail_with_starttls)
  (public_name sendmail.starttls)
  (modules tls_io sendmail_with_starttls)
- (libraries ke tls sendmail)
+ (libraries hxd.core hxd.string logs ke tls sendmail)
  (preprocess future_syntax))
 
 (library

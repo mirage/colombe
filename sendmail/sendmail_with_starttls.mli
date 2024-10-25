@@ -84,6 +84,12 @@ type mechanism = Sendmail.mechanism
 type authentication = Sendmail.authentication
 type ('a, 's) stream = ('a, 's) Sendmail.stream
 
+type tmp_error =
+  [ `Mailbox_unavailable
+  | `Error_processing
+  | `Action_ignored
+  | `Unable_to_accomodate_parameters ]
+
 type error =
   [ `Protocol of
     [ Value.error
@@ -96,7 +102,8 @@ type error =
   | `Authentication_rejected
   | `Authentication_failed
   | `Authentication_required
-  | `STARTTLS_unavailable ]
+  | `STARTTLS_unavailable
+  | `Temporary_failure of tmp_error ]
 
 val pp_error : error Fmt.t
 

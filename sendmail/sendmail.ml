@@ -247,6 +247,19 @@ type authentication = {
 type mechanism = Value.auth = PLAIN | LOGIN
 type ('a, 's) stream = unit -> ('a option, 's) io
 
+type tmp_error =
+  [ `Mailbox_unavailable
+  | `Error_processing
+  | `Action_ignored
+  | `Unable_to_accomodate_parameters ]
+
+let pp_tmp_error ppf = function
+  | `Mailbox_unavailable -> Fmt.string ppf "Mailbox unavailable"
+  | `Error_processing -> Fmt.string ppf "Error processing"
+  | `Action_ignored -> Fmt.string ppf "Action ignored"
+  | `Unable_to_accomodate_parameters ->
+      Fmt.string ppf "Unable to accomodate parameters"
+
 type error =
   [ `Protocol of Value.error
   | `Unsupported_mechanism
@@ -254,7 +267,8 @@ type error =
   | `Weak_mechanism
   | `Authentication_rejected
   | `Authentication_failed
-  | `Authentication_required ]
+  | `Authentication_required
+  | `Temporary_failure of tmp_error ]
 
 let pp_error ppf = function
   | `Protocol err -> Value.pp_error ppf err
@@ -264,6 +278,7 @@ let pp_error ppf = function
   | `Authentication_rejected -> Fmt.pf ppf "Authentication rejected"
   | `Authentication_failed -> Fmt.pf ppf "Authentication failed"
   | `Authentication_required -> Fmt.pf ppf "Authentication required"
+  | `Temporary_failure err -> pp_tmp_error ppf err
 
 let has_8bit_mime_transport_extension = List.exists (( = ) "8BITMIME")
 
@@ -295,19 +310,42 @@ let m0 ctx ?authentication ~domain sender recipients =
     | [] ->
         send ctx Value.Data () >>= fun () ->
         recv ctx Value.TP_354 >>= fun _txts -> return ()
-    | x :: r ->
+    | x :: r -> (
         send ctx Value.Rcpt_to (x, []) >>= fun () ->
-        recv ctx Value.PP_250 >>= fun _txts -> go r in
+        recv ctx Value.Code >>= function
+        | 250, _txts -> go r
+        | 450, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
+        | 451, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+        | 452, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+        | 455, _txts ->
+            properly_quit_and_fail ctx
+              (`Temporary_failure `Unable_to_accomodate_parameters)
+        | code, txts -> fail (`Protocol (`Unexpected_response (code, txts))))
+  in
   match code with
   | 250 -> go recipients
+  | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+  | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+  | 455 ->
+      properly_quit_and_fail ctx
+        (`Temporary_failure `Unable_to_accomodate_parameters)
   | 530 -> properly_quit_and_fail ctx `Authentication_required
   | _ -> fail (`Protocol (`Unexpected_response (code, txts)))
 
 let m1 ctx =
   let open Monad in
-  let* _txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.PP_250 in
-  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
-  return ()
+  let* code, txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.Code in
+  match code with
+  | 250 ->
+      let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+      return ()
+  | 450 -> properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
+  | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+  | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+  | code -> fail (`Protocol (`Unexpected_response (code, txts)))
 
 let sendmail ({ bind; return } as impl) rdwr flow context ?authentication
     ~domain sender recipients mail =

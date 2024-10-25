@@ -15,6 +15,12 @@ type authentication = {
 
 type ('a, 's) stream = unit -> ('a option, 's) io
 
+type tmp_error =
+  [ `Mailbox_unavailable
+  | `Error_processing
+  | `Action_ignored
+  | `Unable_to_accomodate_parameters ]
+
 type error =
   [ `Protocol of
     [ Request.Encoder.error
@@ -27,7 +33,8 @@ type error =
   | `Weak_mechanism
   | `Authentication_rejected
   | `Authentication_failed
-  | `Authentication_required ]
+  | `Authentication_required
+  | `Temporary_failure of tmp_error ]
 
 val pp_error : error Fmt.t
 

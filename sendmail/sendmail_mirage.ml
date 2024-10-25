@@ -3,7 +3,6 @@ open Colombe
 
 let ( <.> ) f g x = f (g x)
 let ( >>? ) = Lwt_result.bind
-let ( $ ) f g x = match f x with Ok x -> g x | Error _ as err -> err
 let msgf fmt = Fmt.kstr (fun msg -> `Msg msg) fmt
 
 module Lwt_scheduler = Sigs.Make (Lwt)
@@ -130,7 +129,17 @@ struct
     let mail () = Lwt_scheduler.inj (mail ()) in
     Lwt.return (tls_config user's_tls_config user's_authenticator)
     >>? fun tls_cfg ->
-    Happy_eyeballs.connect he destination ports >>? fun ((_, port), socket) ->
+    (match destination with
+    | `Domain_name domain_name ->
+        Happy_eyeballs.connect_host he domain_name ports
+    | `Ipaddrs ipaddrs ->
+        let destinations =
+          List.map
+            (fun port -> List.map (fun ipaddr -> (ipaddr, port)) ipaddrs)
+            ports in
+        let destinations = List.concat destinations in
+        Happy_eyeballs.connect_ip he destinations)
+    >>? fun ((_, port), socket) ->
     let process () =
       let protocol =
         if port = 587 then `With_starttls tls_cfg else `With_tls tls_cfg in
@@ -147,12 +156,9 @@ struct
           >|= open_error
       | `With_tls cfg ->
           let host =
-            match Ipaddr.of_string destination with
-            | Ok _ -> None
-            | Error _ ->
-            match Domain_name.(of_string $ host) destination with
-            | Ok host -> Some host
-            | Error _ -> None in
+            match destination with
+            | `Domain_name domain_name -> Some domain_name
+            | _ -> None in
           Socket_tls.client_of_flow cfg ?host socket
           >|= Result.map_error (msgf "%a" Socket_tls.pp_write_error)
           >>? fun socket_tls ->
@@ -180,7 +186,17 @@ struct
     let mail () = Lwt_scheduler.inj (mail ()) in
     Lwt.return (tls_config user's_tls_config user's_authenticator)
     >>? fun tls_cfg ->
-    Happy_eyeballs.connect he destination ports >>? fun (_, socket) ->
+    (match destination with
+    | `Domain_name domain_name ->
+        Happy_eyeballs.connect_host he domain_name ports
+    | `Ipaddrs ipaddrs ->
+        let destinations =
+          List.map
+            (fun port -> List.map (fun ipaddr -> (ipaddr, port)) ipaddrs)
+            ports in
+        let destinations = List.concat destinations in
+        Happy_eyeballs.connect_ip he destinations)
+    >>? fun (_, socket) ->
     let flow = TCP.make socket in
     let process () =
       let ctx =

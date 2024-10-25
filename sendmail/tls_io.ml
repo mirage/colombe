@@ -1,3 +1,7 @@
+let src = Logs.Src.create "sendmail.tls-io"
+
+module Log = (val Logs.src_log src)
+
 [@@@ocamlformat "disable"]
 
 (* XXX(dinosaure): (c) Hannes Menhert, this code is [tls_mirage.ml]
@@ -71,6 +75,10 @@ module Make (Flow : FLOW) = struct
       flow.state <- `Error (`Flow e);
       Flow.return (Error (`Flow e))
 
+  let pp_data ppf = function
+    | None -> Fmt.string ppf "<none>"
+    | Some str -> Fmt.pf ppf "@[<hov>%a@]" (Hxd_string.pp Hxd.default) str
+
   let read_react flow =
     let handle tls buf =
       match Tls.Engine.handle_tls tls buf with
@@ -81,6 +89,7 @@ module Make (Flow : FLOW) = struct
         ( match resp with
           | None     -> Flow.return (Ok ())
           | Some buf -> write_flow flow buf) >>= fun _ ->
+        Log.debug (fun m -> m "~> @[<hov>%a@]" pp_data data);
         Flow.return (`Ok data)
       | Error (fail, `Response resp) ->
         let reason = match fail with
@@ -126,6 +135,7 @@ module Make (Flow : FLOW) = struct
     | `Closed | `Write_closed _ -> Flow.return (Error `Closed)
     | `Error e -> Flow.return (Error (e :> error))
     | `Active tls | `Read_closed tls ->
+        Log.debug (fun m -> m "<~ @[<hov>%a@]" (Hxd_string.pp Hxd.default) (String.concat "" bufs));
         match Tls.Engine.send_application_data tls bufs with
         | Some (tls, answer) ->
             flow.state <- `Active tls ;
