@@ -1,3 +1,8 @@
+### v0.11.0 2024-10-25 Paris (France)
+
+- Add temporary errors and let the opportunity for the user to retry the submission (#80, @dinosaure)
+- Add some logs when we use STARTTLS (#80, @dinosaure)
+
 ### v0.10.0 2024-10-15 Paris (France)
 
 - Be able to compose errors from sendmail packages (@dinosaure, #76)
