@@ -73,14 +73,12 @@ module Rdwr (Flow : Mirage_flow.S) = struct
 end
 
 module Make
-    (Clock : Mirage_clock.PCLOCK)
     (Socket : Mirage_flow.S)
     (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Socket.flow) =
 struct
   module TCP = Rdwr (Socket)
   module Socket_tls = Tls_mirage.Make (Socket)
   module TLS = Rdwr (Socket_tls)
-  module Nss = Ca_certs_nss.Make (Clock)
 
   let tcp =
     let open Lwt_scheduler in
@@ -108,7 +106,7 @@ struct
         (fun flow buf off len -> inj (TLS.send flow buf off len));
     }
 
-  let authenticator = Lazy.from_fun Nss.authenticator
+  let authenticator = Lazy.from_fun Ca_certs_nss.authenticator
 
   let tls_config user's_tls_config user's_authenticator =
     match user's_tls_config with
