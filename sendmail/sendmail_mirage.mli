@@ -1,5 +1,4 @@
 module Make
-    (Clock : Mirage_clock.PCLOCK)
     (Socket : Mirage_flow.S)
     (Happy_eyeballs : Happy_eyeballs_mirage.S with type flow = Socket.flow) : sig
   val submit :
