@@ -28,3 +28,4 @@ depends: [
 conflicts: [
   "result"   {< "1.5"}
 ]
+x-maintenance-intent: [ "(latest)" ]
