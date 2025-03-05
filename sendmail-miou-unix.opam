@@ -25,3 +25,4 @@ depends: [
   "ca-certs"
   "alcotest" {with-test}
 ]
+x-maintenance-intent: [ "(latest)" ]
