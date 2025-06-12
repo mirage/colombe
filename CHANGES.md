@@ -1,3 +1,7 @@
+### v0.12.0 2025-05-31 Barcelona (Spain)
+
+- Remove the useless `Mirage_clock.PCLOCK` functor (@hannesm, #82)
+
 ### v0.11.0 2024-10-25 Paris (France)
 
 - Add temporary errors and let the opportunity for the user to retry the submission (#80, @dinosaure)
