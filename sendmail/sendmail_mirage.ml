@@ -84,9 +84,9 @@ struct
     let open Lwt_scheduler in
     let rd flow buf off len =
       inj
-      @@ (TCP.recv flow buf off len >>= function
-          | 0 -> Lwt.return `End
-          | len -> Lwt.return (`Len len)) in
+      @@ ( TCP.recv flow buf off len >>= function
+           | 0 -> Lwt.return `End
+           | len -> Lwt.return (`Len len) ) in
     {
       Colombe.Sigs.rd;
       Colombe.Sigs.wr =
@@ -97,9 +97,9 @@ struct
     let open Lwt_scheduler in
     let rd flow buf off len =
       inj
-      @@ (TLS.recv flow buf off len >>= function
-          | 0 -> Lwt.return `End
-          | len -> Lwt.return (`Len len)) in
+      @@ ( TLS.recv flow buf off len >>= function
+           | 0 -> Lwt.return `End
+           | len -> Lwt.return (`Len len) ) in
     {
       Colombe.Sigs.rd;
       Colombe.Sigs.wr =
@@ -166,8 +166,9 @@ struct
             recipients mail
           |> Lwt_scheduler.prj
           >|= open_sendmail_error
-          >|= (function
-                | Error err -> Error (err :> error) | Ok value -> Ok value)
+          >|= ( function
+          | Error err -> Error (err :> error)
+          | Ok value -> Ok value )
           >|= open_error in
     Lwt.try_bind process
       (fun result -> Socket.close socket >|= fun () -> result)

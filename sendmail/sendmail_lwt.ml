@@ -23,9 +23,9 @@ let rdwr =
       (fun { ic; _ } bytes off len ->
         let open Lwt.Infix in
         Lwt_scheduler.inj
-          (Lwt_io.read_into ic bytes off len >>= function
-           | 0 -> Lwt.return `End
-           | len -> Lwt.return (`Len len)));
+          ( Lwt_io.read_into ic bytes off len >>= function
+            | 0 -> Lwt.return `End
+            | len -> Lwt.return (`Len len) ));
     wr =
       (fun { oc; _ } bytes off len ->
         let res =
@@ -163,7 +163,7 @@ let submit ?encoder ?decoder ?queue ~destination ?port ~domain
         recipients mail
       |> Lwt_scheduler.prj
       >|= open_sendmail_error
-      >|= (function Error err -> Error (err :> error) | Ok value -> Ok value)
+      >|= ( function Error err -> Error (err :> error) | Ok value -> Ok value )
       >|= open_error
 
 let sendmail ?encoder ?decoder ?queue ~destination ?port ~domain

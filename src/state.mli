@@ -47,9 +47,8 @@ end
 
 module Scheduler
     (Context : C)
-    (Value : S
-               with type encoder = Context.encoder
-                and type decoder = Context.decoder) : sig
+    (Value :
+      S with type encoder = Context.encoder and type decoder = Context.decoder) : sig
   type error = Value.error
 
   val bind : ('a, 'err) t -> f:('a -> ('b, 'err) t) -> ('b, 'err) t

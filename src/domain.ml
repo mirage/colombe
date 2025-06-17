@@ -175,11 +175,12 @@ let satisfy predicate x =
 let extension k v =
   let is_ldh = Decoder.(is_alpha or is_digit or is_dash) in
   let is_dcontent = Decoder.is_dcontent in
-  if String.length k > 0
-     && satisfy is_ldh k
-     && k.[String.length k - 1] <> '-'
-     && String.length v > 0
-     && satisfy is_dcontent v
+  if
+    String.length k > 0
+    && satisfy is_ldh k
+    && k.[String.length k - 1] <> '-'
+    && String.length v > 0
+    && satisfy is_dcontent v
   then Ok (Extension (k, v))
   else error_msgf "Invalid key:%S or value:%S" k v
 

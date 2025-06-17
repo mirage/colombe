@@ -127,8 +127,7 @@ let src = Logs.Src.create "sendmail" ~doc:"logs sendmail's event"
 module Log = (val Logs.src_log src : Logs.LOG)
 module Monad = State.Scheduler (State.Context) (Value)
 
-let run :
-    type s flow.
+let run : type s flow.
     s impl ->
     (flow, s) rdwr ->
     flow ->

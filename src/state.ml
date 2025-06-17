@@ -79,9 +79,8 @@ end
 
 module Scheduler
     (Context : C)
-    (Value : S
-               with type encoder = Context.encoder
-                and type decoder = Context.decoder) =
+    (Value :
+      S with type encoder = Context.encoder and type decoder = Context.decoder) =
 struct
   type error = Value.error
 
@@ -132,8 +131,7 @@ struct
   let ( let+ ) m f = bind' m ~f
   let ( >>= ) m f = bind m ~f
 
-  let encode :
-      type a.
+  let encode : type a.
       Context.t ->
       a Value.send ->
       a ->
@@ -148,13 +146,11 @@ struct
       | Error err -> Error (`Protocol err) in
     go (Value.encode (Context.encoder ctx) w v)
 
-  let send :
-      type a.
+  let send : type a.
       Context.t -> a Value.send -> a -> (unit, [> `Protocol of error ]) t =
    fun ctx w x -> encode ctx w x (fun _ctx -> Return ())
 
-  let decode :
-      type a.
+  let decode : type a.
       Context.t ->
       a Value.recv ->
       (Context.t -> a -> ('b, [> `Protocol of error ]) t) ->
