@@ -94,7 +94,7 @@ let submit ?encoder ?decoder ?queue he ~destination ?port ~domain
         recipients mail
       |> Miou_scheduler.prj
       |> open_sendmail_error
-      |> (function Error err -> Error (err :> error) | Ok value -> Ok value)
+      |> ( function Error err -> Error (err :> error) | Ok value -> Ok value )
       |> open_error
 
 let sendmail ?encoder ?decoder ?queue he ~destination ?port ~domain

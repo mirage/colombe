@@ -149,8 +149,9 @@ let prompt :
           buffer = decoder.buffer;
           committed = decoder.pos;
         }
-    else if not (at_least_one_line ?relax { decoder with max = off })
-            (* XXX(dinosaure): we make a new decoder here and we did __not__ set [decoder.max] owned by end-user,
+    else if
+      not (at_least_one_line ?relax { decoder with max = off })
+      (* XXX(dinosaure): we make a new decoder here and we did __not__ set [decoder.max] owned by end-user,
                and this is exactly what we want. *)
     then
       let continue = function
@@ -210,7 +211,8 @@ let peek_while_eol_or_space ?(relax = false) decoder =
     incr idx
   done ;
 
-  if !idx < end_of_input decoder
-     && ((!chr = '\n' && (!has_cr || relax)) || !chr = ' ')
+  if
+    !idx < end_of_input decoder
+    && ((!chr = '\n' && (!has_cr || relax)) || !chr = ' ')
   then (decoder.buffer, decoder.pos, !idx + 1 - decoder.pos)
   else leave_with decoder `Expected_eol_or_space

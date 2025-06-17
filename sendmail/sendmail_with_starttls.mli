@@ -120,8 +120,7 @@ val sendmail :
   (string * int * int, 's) stream ->
   ((unit, error) result, 's) io
 (** [sendmail impl rdwr flow ctx tls_config ?authentication ~domain sender
-   recipients mail]
-    where:
+     recipients mail] where:
 
     - [impl] is the scheduler (unix, lwt or async)
     - [rdwr] read/write {i syscall}

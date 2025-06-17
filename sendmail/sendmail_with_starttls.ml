@@ -80,8 +80,8 @@ module Value = struct
     | Code -> Fmt.pf ppf "<code>"
     | Response_or v -> pp_witness ppf v
 
-  let encode :
-      type a. Encoder.encoder -> a send -> a -> (unit, [> Encoder.error ]) t =
+  let encode : type a.
+      Encoder.encoder -> a send -> a -> (unit, [> Encoder.error ]) t =
    fun encoder w v ->
     let fiber : a send -> [> Encoder.error ] Encoder.state = function
       | Payload ->
@@ -301,8 +301,7 @@ module Make_with_tls (Value : VALUE) :
   type 'x send = 'x Value.send
   type 'x recv = 'x Value.recv
 
-  let rec pipe :
-      type r.
+  let rec pipe : type r.
       StartTLS.t ->
       (char, Bigarray.int8_unsigned_elt) Ke.Rke.t ->
       (r, [> error ]) State.t ->
@@ -385,26 +384,26 @@ module Make_with_tls (Value : VALUE) :
 
   let starttls_as_client (ctx : Context_with_tls.t) cfg =
     let { Flow.run } = StartTLS.client_of_flow cfg () in
-    (run @@ function
-     | Ok tls ->
-         ctx.tls <- Some tls ;
-         Return (Ok ())
-     | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
-     | Error (`Tls_failure failure) -> Return (Error (`Tls_failure failure))
-     | Error (`Flow `Closed) -> assert false
-     | Error `Closed -> Return (Error `Tls_closed))
+    ( run @@ function
+      | Ok tls ->
+          ctx.tls <- Some tls ;
+          Return (Ok ())
+      | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
+      | Error (`Tls_failure failure) -> Return (Error (`Tls_failure failure))
+      | Error (`Flow `Closed) -> assert false
+      | Error `Closed -> Return (Error `Tls_closed) )
     |> Flow.join
 
   let starttls_as_server (ctx : Context_with_tls.t) cfg =
     let { Flow.run } = StartTLS.server_of_flow cfg () in
-    (run @@ function
-     | Ok tls ->
-         ctx.tls <- Some tls ;
-         Return (Ok ())
-     | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
-     | Error (`Tls_failure failure) -> Return (Error (`Tls_failure failure))
-     | Error (`Flow `Closed) -> assert false
-     | Error `Closed -> Return (Error `Tls_closed))
+    ( run @@ function
+      | Ok tls ->
+          ctx.tls <- Some tls ;
+          Return (Ok ())
+      | Error (`Tls_alert alert) -> Return (Error (`Tls_alert alert))
+      | Error (`Tls_failure failure) -> Return (Error (`Tls_failure failure))
+      | Error (`Flow `Closed) -> assert false
+      | Error `Closed -> Return (Error `Tls_closed) )
     |> Flow.join
 
   let close (ctx : Context_with_tls.t) =
@@ -637,8 +636,7 @@ let m1 ctx =
   | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
   | code -> fail (`Protocol (`Value (`Unexpected_response (code, txts))))
 
-let run :
-    type s flow.
+let run : type s flow.
     s impl ->
     (flow, s) rdwr ->
     flow ->
@@ -678,14 +676,14 @@ let sendmail ({ bind; return } as state) rdwr flow ctx mail =
             in
             let { Flow.run = run' } = StartTLS.writev tls raw in
             let m =
-              (run' @@ function
-               | Ok () -> Return (Ok ())
-               | Error (`Tls_alert alert) ->
-                   Return (Error (`Protocol (`Tls_alert alert)))
-               | Error (`Tls_failure failure) ->
-                   Return (Error (`Protocol (`Tls_failure failure)))
-               | Error (`Flow `Closed) -> assert false
-               | Error `Closed -> Return (Error (`Protocol `Tls_closed)))
+              ( run' @@ function
+                | Ok () -> Return (Ok ())
+                | Error (`Tls_alert alert) ->
+                    Return (Error (`Protocol (`Tls_alert alert)))
+                | Error (`Tls_failure failure) ->
+                    Return (Error (`Protocol (`Tls_failure failure)))
+                | Error (`Flow `Closed) -> assert false
+                | Error `Closed -> Return (Error (`Protocol `Tls_closed)) )
               |> Flow.join in
             run state rdwr flow m >>= function
             | Ok () -> go ()
@@ -764,10 +762,10 @@ let sendmail ({ bind; return } as impl) rdwr flow context config ?authentication
   run impl rdwr flow m0
   >>| Result.map_error (fun err -> `Monad err)
   >>= (fun () ->
-        (* assert that context is empty. *)
-        sendmail impl rdwr flow context mail >>= fun () ->
-        let m1 = m1 context in
-        run impl rdwr flow m1 >>| Result.map_error (fun err -> `Monad err))
+  (* assert that context is empty. *)
+  sendmail impl rdwr flow context mail >>= fun () ->
+  let m1 = m1 context in
+  run impl rdwr flow m1 >>| Result.map_error (fun err -> `Monad err))
   >>| Result.map_error @@ function
       | `Monad (`Protocol (`Value (#Value.error as err))) ->
           (`Protocol err :> error)
