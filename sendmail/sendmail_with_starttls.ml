@@ -662,6 +662,7 @@ let sendmail ({ bind; return } as state) rdwr flow ctx mail =
   match ctx.Context_with_tls.tls with
   | None ->
       let rec go = function
+        | Some (_, _, 0) -> mail () >>= go
         | Some (buf, off, len) -> rdwr.wr flow buf off len >>= mail >>= go
         | None -> return (Ok ()) in
       mail () >>= go
@@ -669,11 +670,11 @@ let sendmail ({ bind; return } as state) rdwr flow ctx mail =
       let rec go () =
         mail () >>= function
         | None -> return (Ok ())
+        | Some (_, _, 0) -> go ()
         | Some (buf, off, len) -> (
             let raw = String.sub buf off len in
             let raw =
-              if len >= 1 && buf.[off] = '.' then [ _dot; raw ] else [ raw ]
-            in
+              if len >= 1 && buf.[0] = '.' then [ _dot; raw ] else [ raw ] in
             let { Flow.run = run' } = StartTLS.writev tls raw in
             let m =
               ( run' @@ function

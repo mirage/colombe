@@ -211,8 +211,8 @@ module Decoder = struct
   let extended_domain =
     domain
     >>= (fun domain ->
-          skip_while is_wsp *> char '(' *> tcp_info <* char ')'
-          >>= fun tcp_info -> return (With (domain, tcp_info)))
+    skip_while is_wsp *> char '(' *> tcp_info <* char ')' >>= fun tcp_info ->
+    return (With (domain, tcp_info)))
     <|> ( address_literal >>= fun domain ->
           skip_while is_wsp *> char '(' *> tcp_info <* char ')'
           >>= fun tcp_info -> return (With (domain, tcp_info)) )
@@ -247,7 +247,9 @@ module Decoder = struct
               let date_time = Date.of_ptime ~zone ptime in
               return date_time
           | Ok (ptime, None, _) ->
-              let zone = Date.Zone.UT (* TODO *) in
+              let zone =
+                Date.Zone.UT
+                (* TODO *) in
               let date_time = Date.of_ptime ~zone ptime in
               return date_time
           | _ -> fail "date_time" )
