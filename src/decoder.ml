@@ -141,7 +141,9 @@ let prompt :
     decoder.max <- rest ;
     decoder.pos <- 0) ;
   let rec go off =
-    if off = Bytes.length decoder.buffer
+    let at_least_one_line =
+      at_least_one_line ?relax { decoder with max = off } in
+    if off = Bytes.length decoder.buffer && not at_least_one_line
     then
       Error
         {
@@ -150,7 +152,7 @@ let prompt :
           committed = decoder.pos;
         }
     else if
-      not (at_least_one_line ?relax { decoder with max = off })
+      not at_least_one_line
       (* XXX(dinosaure): we make a new decoder here and we did __not__ set [decoder.max] owned by end-user,
                and this is exactly what we want. *)
     then
