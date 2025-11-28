@@ -1,3 +1,8 @@
+### v0.12.1 2025-11-28 Paris (France)
+
+- Apply `ocamlformat.0.28.1` (@dinosaure, #86)
+- Fix how send an email via `sendmail.starttls` (@dinosaure, #85)
+
 ### v0.12.0 2025-05-31 Barcelona (Spain)
 
 - Remove the useless `Mirage_clock.PCLOCK` functor (@hannesm, #82)
