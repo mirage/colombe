@@ -581,10 +581,10 @@ let m0 ctx config ?authentication ~domain sender recipients =
     let has_8bit_mime_transport_extension =
       has_8bit_mime_transport_extension txts in
     (match authentication with
-    | Some a ->
-        auth ctx a.Sendmail.mechanism
-          (Some (a.Sendmail.username, a.Sendmail.password))
-    | None -> return `Anonymous)
+      | Some a ->
+          auth ctx a.Sendmail.mechanism
+            (Some (a.Sendmail.username, a.Sendmail.password))
+      | None -> return `Anonymous)
     >>= fun _status ->
     let parameters =
       if has_8bit_mime_transport_extension
