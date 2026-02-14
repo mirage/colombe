@@ -21,6 +21,7 @@ depends: [
   "domain-name"
   "mnet"
   "mnet-tls"
+  "flux"
   "mnet-happy-eyeballs"
   "ca-certs-nss" {>= "3.108-1"}
 ]
