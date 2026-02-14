@@ -27,6 +27,13 @@
    ca-certs happy-eyeballs-miou-unix))
 
 (library
+ (name msendmail)
+ (public_name msendmail)
+ (modules msendmail)
+ (libraries sendmail sendmail.starttls domain-name mnet mnet-tls
+   mnet-happy-eyeballs ca-certs-nss mirage-ptime.solo5 flux))
+
+(library
  (name sendmail_mirage)
  (public_name sendmail-mirage)
  (modules sendmail_mirage)
