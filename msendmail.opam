@@ -30,4 +30,6 @@ pin-depends: [
   [ "mnet.dev" "git+https://github.com/robur-coop/mnet.git#838f7acaf0cca23ff73ff8a43dbb668f3c2aa697" ]
   [ "mnet-tls.dev" "git+https://github.com/robur-coop/mnet.git#838f7acaf0cca23ff73ff8a43dbb668f3c2aa697" ]
   [ "mnet-happy-eyeballs.dev" "git+https://github.com/robur-coop/mnet.git#838f7acaf0cca23ff73ff8a43dbb668f3c2aa697" ]
+  [ "flux.dev" "git+https://github.com/robur-coop/flux.git#4b8e293871cac602e9c6ca3ccf1905c5ce8aff46" ]
+  [ "fluxt.dev" "git+https://github.com/robur-coop/flux.git#4b8e293871cac602e9c6ca3ccf1905c5ce8aff46" ]
 ]
