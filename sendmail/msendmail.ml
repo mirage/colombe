@@ -152,13 +152,18 @@ let submit ?encoder ?decoder ?queue he ~destination:dst ?port ~domain
             (Printexc.to_string exn)
     end
 
-let sendmail ?encoder ?decoder ?queue he ~destination:dst ?port ~domain
+let sendmail ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
     ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
     sender recipients stream =
-  let ports = match port with None -> [ 25 ] | Some port -> [ port ] in
   let into, bqueue = Flux.Sink.bqueue ~size:0x7ff in
   let* tls_cfg = tls_config user's_tls_config user's_authenticator in
-  let* _, flow = Mnet_happy_eyeballs.connect he dst ports in
+  let* _, flow =
+    match dst with
+    | `Host domain_name ->
+        Mnet_happy_eyeballs.connect_host he domain_name [ port ]
+    | `Ips ipaddrs ->
+        let dsts = List.map (fun ipaddr -> (ipaddr, port)) ipaddrs in
+        Mnet_happy_eyeballs.connect_ip he dsts in
   let ctx =
     Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
   in

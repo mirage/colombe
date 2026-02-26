@@ -30,7 +30,7 @@ val sendmail :
   ?decoder:(unit -> bytes) ->
   ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
   Mnet_happy_eyeballs.t ->
-  destination:string ->
+  destination:[ `Ips of Ipaddr.t list | `Host of [ `host ] Domain_name.t ] ->
   ?port:int ->
   domain:Colombe.Domain.t ->
   ?cfg:Tls.Config.client ->
