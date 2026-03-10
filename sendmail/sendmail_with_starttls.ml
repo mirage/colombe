@@ -3,10 +3,7 @@ open Colombe.Sigs
 open Colombe.State
 open Colombe
 
-let ( <.> ) f g x = f (g x)
-
-let src =
-  Logs.Src.create "sendmail.starttls" ~doc:"logs sendmail's event with TLS"
+let src = Logs.Src.create "sendmail.starttls"
 
 module Log = (val Logs.src_log src : Logs.LOG)
 
@@ -105,9 +102,9 @@ module Value = struct
     let rec go = function
       | Encoder.Done -> Return ()
       | Encoder.Write { continue; buffer; off; len } ->
-          Write { k = go <.> continue; buffer; off; len }
+          Write { k = Fun.compose go continue; buffer; off; len }
       | Encoder.Error err -> Error err in
-    (go <.> fiber) w
+    (Fun.compose go fiber) w
 
   let decode : type a. Decoder.decoder -> a recv -> (a, [> Decoder.error ]) t =
    fun decoder w ->
@@ -151,7 +148,7 @@ module Value = struct
     let rec go = function
       | Decoder.Done v -> k v
       | Decoder.Read { buffer; off; len; continue } ->
-          Read { k = go <.> continue; buffer; off; len }
+          Read { k = Fun.compose go continue; buffer; off; len }
       | Decoder.Error { error; _ } -> Error error in
     go (Reply.Decoder.response decoder)
 end
@@ -200,8 +197,9 @@ module Flow = struct
   let rec join : (('a, 'err) result, error) State.t -> ('a, 'err) State.t =
     function
     | Write { k; buffer; off; len } ->
-        Write { k = join <.> k; buffer; off; len }
-    | Read { k; buffer; off; len } -> Read { k = join <.> k; buffer; off; len }
+        Write { k = Fun.compose join k; buffer; off; len }
+    | Read { k; buffer; off; len } ->
+        Read { k = Fun.compose join k; buffer; off; len }
     | Return (Ok v) -> Return v
     | Return (Error err) -> Error err
     | Error `Closed -> assert false
@@ -241,18 +239,20 @@ module Value_without_tls = struct
   let encode_without_tls ctx w v =
     let rec go = function
       | Error err -> Error err
-      | Read { k; buffer; off; len } -> Read { k = go <.> k; buffer; off; len }
+      | Read { k; buffer; off; len } ->
+          Read { k = Fun.compose go k; buffer; off; len }
       | Write { k; buffer; off; len } ->
-          Write { k = go <.> k; buffer; off; len }
+          Write { k = Fun.compose go k; buffer; off; len }
       | Return v -> Return v in
     go (encode ctx w v)
 
   let decode_without_tls ctx w =
     let rec go = function
       | Error err -> Error err
-      | Read { k; buffer; off; len } -> Read { k = go <.> k; buffer; off; len }
+      | Read { k; buffer; off; len } ->
+          Read { k = Fun.compose go k; buffer; off; len }
       | Write { k; buffer; off; len } ->
-          Write { k = go <.> k; buffer; off; len }
+          Write { k = Fun.compose go k; buffer; off; len }
       | Return v -> Return v in
     go (decode ctx w)
 end
