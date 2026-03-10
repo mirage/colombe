@@ -56,6 +56,11 @@ let tls_config user's_tls_config user's_authenticator =
         | (Error _ as err), None -> err in
       Tls.Config.client ~authenticator ()
 
+let pp_error ppf = function
+  | #Sendmail_with_starttls.error as err ->
+      Sendmail_with_starttls.pp_error ppf err
+  | `Msg msg -> Fmt.string ppf msg
+
 let submit ?encoder ?decoder ?queue he ~destination:dst ?port ~domain
     ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
     sender recipients stream =

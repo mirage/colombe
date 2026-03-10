@@ -8,6 +8,7 @@ end
 val miou : Miou_scheduler.t Colombe.Sigs.impl
 val tcp : (Mnet.TCP.flow, Miou_scheduler.t) Colombe.Sigs.rdwr
 val tls : (Mnet_tls.t, Miou_scheduler.t) Colombe.Sigs.rdwr
+val pp_error : [ `Msg of string | Sendmail_with_starttls.error ] Fmt.t
 
 val submit :
   ?encoder:(unit -> bytes) ->
