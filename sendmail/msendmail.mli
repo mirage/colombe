@@ -42,6 +42,8 @@ val sendmail :
   (string * int * int) Flux.stream ->
   (unit, [ `Msg of string | Sendmail_with_starttls.error ]) result
 
+type tx = (unit, Sendmail_with_starttls.error) result
+
 val many :
   ?encoder:(unit -> bytes) ->
   ?decoder:(unit -> bytes) ->
@@ -57,6 +59,4 @@ val many :
   * Colombe.Forward_path.t list
   * (string * int * int) Flux.stream)
   list ->
-  ( (unit, Sendmail_with_starttls.error) result list,
-    [ `Msg of string | Sendmail_with_starttls.error ] )
-  result
+  (tx list, [ `Msg of string | Sendmail_with_starttls.error ]) result

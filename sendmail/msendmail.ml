@@ -157,6 +157,8 @@ let submit ?encoder ?decoder ?queue he ~destination:dst ?port ~domain
             (Printexc.to_string exn)
     end
 
+type tx = (unit, Sendmail_with_starttls.error) result
+
 let many ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
     ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
     transactions =
@@ -205,10 +207,9 @@ let many ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
     Miou.Ownership.release resource ;
     result in
   let errors =
-    List.filter_map
-      (fun prm ->
-        match Miou.await prm with Ok () -> None | Error exn -> Some exn)
-      consumers in
+    let fn prm =
+      match Miou.await prm with Ok () -> None | Error exn -> Some exn in
+    List.filter_map fn consumers in
   match (errors, Miou.await prm1) with
   | [], Ok (Ok results) -> Ok results
   | exn :: _, _ ->
