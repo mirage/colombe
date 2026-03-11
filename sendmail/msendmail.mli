@@ -41,3 +41,22 @@ val sendmail :
   Colombe.Forward_path.t list ->
   (string * int * int) Flux.stream ->
   (unit, [ `Msg of string | Sendmail_with_starttls.error ]) result
+
+val many :
+  ?encoder:(unit -> bytes) ->
+  ?decoder:(unit -> bytes) ->
+  ?queue:(unit -> (char, Bigarray.int8_unsigned_elt) Ke.Rke.t) ->
+  Mnet_happy_eyeballs.t ->
+  destination:[ `Ips of Ipaddr.t list | `Host of [ `host ] Domain_name.t ] ->
+  ?port:int ->
+  domain:Colombe.Domain.t ->
+  ?cfg:Tls.Config.client ->
+  ?authenticator:X509.Authenticator.t ->
+  ?authentication:Sendmail.authentication ->
+  (Colombe.Reverse_path.t
+  * Colombe.Forward_path.t list
+  * (string * int * int) Flux.stream)
+  list ->
+  ( (unit, Sendmail_with_starttls.error) result list,
+    [ `Msg of string | Sendmail_with_starttls.error ] )
+  result

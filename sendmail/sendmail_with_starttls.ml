@@ -1,4 +1,3 @@
-open Rresult
 open Colombe.Sigs
 open Colombe.State
 open Colombe
@@ -57,6 +56,7 @@ module Value = struct
     | Auth : auth send
     | Payload : string send
     | Starttls : unit send
+    | Reset : unit send
 
   type 'x recv =
     | PP_220 : pp_220 recv
@@ -94,6 +94,7 @@ module Value = struct
       | Dot -> Request.Encoder.request `Data_end encoder
       | Quit -> Request.Encoder.request `Quit encoder
       | Starttls -> Request.Encoder.request (`Verb ("STARTTLS", [])) encoder
+      | Reset -> Request.Encoder.request `Reset encoder
       | Auth ->
       match v with
       | PLAIN -> Request.Encoder.request (`Verb ("AUTH", [ "PLAIN" ])) encoder
@@ -545,7 +546,7 @@ let m0 ctx config ?authentication ~domain sender recipients =
       | [] ->
           send ctx Value.Data () >>= fun () ->
           recv ctx Value.TP_354 >>= fun _txts -> return ()
-      | x :: r -> (
+      | x :: r -> begin
           send ctx Value.Rcpt_to (x, []) >>= fun () ->
           recv ctx Value.Code >>= function
           | 250, _txts -> go r
@@ -560,8 +561,8 @@ let m0 ctx config ?authentication ~domain sender recipients =
               properly_quit_and_fail ctx
                 (`Temporary_failure `Unable_to_accomodate_parameters)
           | code, txts ->
-              fail (`Protocol (`Value (`Unexpected_response (code, txts)))))
-    in
+              fail (`Protocol (`Value (`Unexpected_response (code, txts))))
+        end in
     match code with
     | 250 -> go recipients
     | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
@@ -597,7 +598,7 @@ let m0 ctx config ?authentication ~domain sender recipients =
       | [] ->
           send ctx Value.Data () >>= fun () ->
           recv ctx Value.TP_354 >>= fun _txts -> return ()
-      | x :: r -> (
+      | x :: r -> begin
           send ctx Value.Rcpt_to (x, []) >>= fun () ->
           recv ctx Value.Code >>= function
           | 250, _txts -> go r
@@ -612,8 +613,8 @@ let m0 ctx config ?authentication ~domain sender recipients =
               properly_quit_and_fail ctx
                 (`Temporary_failure `Unable_to_accomodate_parameters)
           | code, txts ->
-              fail (`Protocol (`Value (`Unexpected_response (code, txts)))))
-    in
+              fail (`Protocol (`Value (`Unexpected_response (code, txts))))
+        end in
     match code with
     | 250 -> go recipients
     | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
@@ -636,6 +637,90 @@ let m1 ctx =
   | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
   | code -> fail (`Protocol (`Value (`Unexpected_response (code, txts))))
 
+let m2 ctx ?authentication ~domain config =
+  let open Monad in
+  recv ctx Value.PP_220 >>= fun _txts ->
+  let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
+  let has_starttls = has_starttls txts in
+  if (not has_starttls) && Option.is_some authentication
+  then properly_quit_and_fail ctx `STARTTLS_unavailable
+  else if not has_starttls
+  then
+    let has_8bit = has_8bit_mime_transport_extension txts in
+    return has_8bit
+  else
+    let* _txts =
+      send ctx Value.Starttls () >>= fun () -> recv ctx Value.PP_220 in
+    Value_with_tls.starttls_as_client ctx config
+    |> reword_error (fun err -> `Protocol err)
+    >>= fun () ->
+    let* txts = send ctx Value.Helo domain >>= fun () -> recv ctx Value.PP_250 in
+    let has_8bit = has_8bit_mime_transport_extension txts in
+    (match authentication with
+      | Some a ->
+          auth ctx a.Sendmail.mechanism
+            (Some (a.Sendmail.username, a.Sendmail.password))
+      | None -> return `Anonymous)
+    >>= fun _status -> return has_8bit
+
+let m_transaction ctx ~has_8bit_mime sender recipients =
+  let open Monad in
+  let parameters = if has_8bit_mime then [ ("BODY", Some "8BITMIME") ] else [] in
+  let* code, txts =
+    send ctx Value.Mail_from (sender, parameters) >>= fun () ->
+    recv ctx Value.Code in
+  let rec go = function
+    | [] ->
+        send ctx Value.Data () >>= fun () ->
+        recv ctx Value.TP_354 >>= fun _txts -> return ()
+    | x :: r -> begin
+        send ctx Value.Rcpt_to (x, []) >>= fun () ->
+        recv ctx Value.Code >>= function
+        | 250, _txts -> go r
+        | 450, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Mailbox_unavailable)
+        | 451, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+        | 452, _txts ->
+            properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+        | 455, _txts ->
+            properly_quit_and_fail ctx
+              (`Temporary_failure `Unable_to_accomodate_parameters)
+        | code, txts ->
+            fail (`Protocol (`Value (`Unexpected_response (code, txts))))
+      end in
+  match code with
+  | 250 -> go recipients
+  | 451 -> properly_quit_and_fail ctx (`Temporary_failure `Error_processing)
+  | 452 -> properly_quit_and_fail ctx (`Temporary_failure `Action_ignored)
+  | 455 ->
+      properly_quit_and_fail ctx
+        (`Temporary_failure `Unable_to_accomodate_parameters)
+  | 530 -> properly_quit_and_fail ctx `Authentication_required
+  | code -> fail (`Protocol (`Value (`Unexpected_response (code, txts))))
+
+let m_dot ctx =
+  let open Monad in
+  let* code, txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.Code in
+  match code with
+  | 250 -> return ()
+  | 450 -> fail (`Temporary_failure `Mailbox_unavailable)
+  | 451 -> fail (`Temporary_failure `Error_processing)
+  | 452 -> fail (`Temporary_failure `Action_ignored)
+  | code -> fail (`Protocol (`Value (`Unexpected_response (code, txts))))
+
+let m_rset ctx =
+  let open Monad in
+  let* code, txts = send ctx Value.Reset () >>= fun () -> recv ctx Value.Code in
+  match code with
+  | 250 -> return ()
+  | code -> fail (`Protocol (`Value (`Unexpected_response (code, txts))))
+
+let m_quit ctx =
+  let open Monad in
+  let* _txts = send ctx Value.Quit () >>= fun () -> recv ctx Value.PP_221 in
+  return ()
+
 let run : type s flow.
     s impl ->
     (flow, s) rdwr ->
@@ -656,7 +741,7 @@ let run : type s flow.
 
 let _dot = "."
 
-let sendmail ({ bind; return } as state) rdwr flow ctx mail =
+let body ({ bind; return } as state) rdwr flow ctx mail =
   let ( >>= ) = bind in
 
   match ctx.Context_with_tls.tls with
@@ -752,6 +837,13 @@ let pp_error ppf = function
   | `STARTTLS_unavailable -> Fmt.pf ppf "STARTTLS unavailable"
   | `Temporary_failure err -> pp_tmp_error ppf err
 
+let on_error = function
+  | `Monad (`Protocol (`Value (#Value.error as err))) ->
+      (`Protocol err :> error)
+  | `Monad (`Protocol (#tls as err)) -> (`Protocol err :> error)
+  | `Monad (#state as err) -> (err :> error)
+  | `Protocol (#tls as err) -> (`Protocol err :> error)
+
 let sendmail ({ bind; return } as impl) rdwr flow context config ?authentication
     ~domain sender recipients mail : ((unit, error) result, 's) io =
   let ( >>- ) = bind in
@@ -763,13 +855,62 @@ let sendmail ({ bind; return } as impl) rdwr flow context config ?authentication
   run impl rdwr flow m0
   >>| Result.map_error (fun err -> `Monad err)
   >>= (fun () ->
-  (* assert that context is empty. *)
-  sendmail impl rdwr flow context mail >>= fun () ->
+  body impl rdwr flow context mail >>= fun () ->
   let m1 = m1 context in
   run impl rdwr flow m1 >>| Result.map_error (fun err -> `Monad err))
-  >>| Result.map_error @@ function
-      | `Monad (`Protocol (`Value (#Value.error as err))) ->
-          (`Protocol err :> error)
-      | `Monad (`Protocol (#tls as err)) -> (`Protocol err :> error)
-      | `Monad (#state as err) -> (err :> error)
-      | `Protocol (#tls as err) -> (`Protocol err :> error)
+  >>| Result.map_error on_error
+
+let many ({ bind; return } as impl) rdwr flow context config ?authentication
+    ~domain transactions : (((unit, error) result list, error) result, 's) io =
+  let ( >>- ) = bind in
+  let ( >>| ) x f = x >>- fun x -> return (f x) in
+  let ( >>= ) x f =
+    x >>- function Ok v -> f v | Error _ as err -> return err in
+
+  let t = m2 context ?authentication ~domain config in
+  run impl rdwr flow t
+  >>| Result.map_error (fun err -> `Monad err)
+  >>| Result.map_error on_error
+  >>= fun has_8bit_mime ->
+  let rec loop (acc : (unit, error) result list) = function
+    | [] ->
+        let quit = m_quit context in
+        run impl rdwr flow quit >>- fun _ -> return (Ok (List.rev acc))
+    | (sender, recipients, mail) :: rest -> begin
+        let txn = m_transaction context ~has_8bit_mime sender recipients in
+        run impl rdwr flow txn
+        >>| Result.map_error (fun err -> `Monad err)
+        >>| Result.map_error on_error
+        >>- function
+        | Error err ->
+            let rset = m_rset context in
+            run impl rdwr flow rset >>- fun _ ->
+            loop (Result.Error err :: acc) rest
+        | Ok () -> begin
+            body impl rdwr flow context mail >>- function
+            | Error (`Protocol (#tls as err)) ->
+                let err = (`Protocol err :> error) in
+                let rset = m_rset context in
+                run impl rdwr flow rset >>- fun _ ->
+                loop (Result.Error err :: acc) rest
+            | Ok () -> begin
+                let dot = m_dot context in
+                run impl rdwr flow dot
+                >>| Result.map_error (fun err -> `Monad err)
+                >>| Result.map_error on_error
+                >>- function
+                | Error err ->
+                    let rset = m_rset context in
+                    run impl rdwr flow rset >>- fun _ ->
+                    loop (Result.Error err :: acc) rest
+                | Ok () ->
+                    if rest <> []
+                    then
+                      let rset = m_rset context in
+                      run impl rdwr flow rset >>- fun _ ->
+                      loop (Result.Ok () :: acc) rest
+                    else loop (Result.Ok () :: acc) rest
+              end
+          end
+      end in
+  loop [] transactions

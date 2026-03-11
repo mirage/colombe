@@ -157,6 +157,68 @@ let submit ?encoder ?decoder ?queue he ~destination:dst ?port ~domain
             (Printexc.to_string exn)
     end
 
+let many ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
+    ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
+    transactions =
+  let* tls_cfg = tls_config user's_tls_config user's_authenticator in
+  let* _, flow =
+    match dst with
+    | `Host domain_name ->
+        Mnet_happy_eyeballs.connect_host he domain_name [ port ]
+    | `Ips ipaddrs ->
+        let dsts = List.map (fun ipaddr -> (ipaddr, port)) ipaddrs in
+        Mnet_happy_eyeballs.connect_ip he dsts in
+  let ctx =
+    Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
+  in
+  let txs =
+    let fn (sender, recipients, stream) =
+      let into, q = Flux.Sink.bqueue ~size:0x7ff in
+      (sender, recipients, stream, into, q) in
+    List.map fn transactions in
+  let consumers =
+    let fn (_, _, stream, into, q) =
+      Miou.async @@ fun () ->
+      let finally = Flux.Bqueue.close in
+      let resource = Miou.Ownership.create ~finally q in
+      Miou.Ownership.own resource ;
+      Flux.Stream.into into stream ;
+      Miou.Ownership.disown resource in
+    List.map fn txs in
+  let prm1 =
+    Miou.async @@ fun () ->
+    let finally = Mnet.TCP.close in
+    let resource = Miou.Ownership.create ~finally flow in
+    Miou.Ownership.own resource ;
+    let txs =
+      let fn (sender, recipients, _, _, q) =
+        let seq = Flux.Bqueue.to_seq q in
+        let dispenser = Seq.to_dispenser seq in
+        let dispenser = Fun.compose Miou_scheduler.inj dispenser in
+        (sender, recipients, dispenser) in
+      List.map fn txs in
+    let result =
+      Sendmail_with_starttls.many miou tcp flow ctx tls_cfg ?authentication
+        ~domain txs
+      |> Miou_scheduler.prj
+      |> open_sendmail_with_starttls_error in
+    Miou.Ownership.release resource ;
+    result in
+  let errors =
+    List.filter_map
+      (fun prm ->
+        match Miou.await prm with Ok () -> None | Error exn -> Some exn)
+      consumers in
+  match (errors, Miou.await prm1) with
+  | [], Ok (Ok results) -> Ok results
+  | exn :: _, _ ->
+      error_msgf "Unexpected exception from the given email stream: %s"
+        (Printexc.to_string exn)
+  | [], Ok (Error err) -> Error err
+  | [], Error exn ->
+      error_msgf "Unexpected exception from the sendmail process: %s"
+        (Printexc.to_string exn)
+
 let sendmail ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
     ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
     sender recipients stream =
