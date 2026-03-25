@@ -54,9 +54,9 @@ val many :
   domain:Colombe.Domain.t ->
   ?cfg:Tls.Config.client ->
   ?authenticator:X509.Authenticator.t ->
+  ?attempts:int ->
   ?authentication:Sendmail.authentication ->
   (Colombe.Reverse_path.t
-  * Colombe.Forward_path.t list
-  * (string * int * int) Flux.stream)
-  list ->
+  * Colombe.Forward_path.t list) list ->
+  (string * int * int) Flux.stream Seq.t ->
   (tx list, [ `Msg of string | Sendmail_with_starttls.error ]) result

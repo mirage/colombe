@@ -107,6 +107,8 @@ type error =
 
 val pp_error : error Fmt.t
 
+type 's streams = (string * int * int, 's) stream Seq.t
+
 val sendmail :
   's impl ->
   ('flow, 's) rdwr ->
@@ -146,9 +148,12 @@ val many :
   'flow ->
   Context_with_tls.t ->
   Tls.Config.client ->
+  ?attempts:int ->
+  ?sleep:(unit -> (unit, 's) io) ->
   ?authentication:authentication ->
   domain:Domain.t ->
-  (reverse_path * forward_path list * (string * int * int, 's) stream) list ->
+  (reverse_path * forward_path list) list ->
+  (string * int * int, 's) stream Seq.t ->
   (((unit, error) result list, error) result, 's) io
 (** [many impl rdwr flow ctx tls_config ?authentication ~domain transactions]
     sends multiple emails over a single TCP+STARTTLS connection. Each

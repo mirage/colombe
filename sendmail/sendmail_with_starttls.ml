@@ -123,6 +123,7 @@ module Value = struct
       | Code, `Other v -> Return v
       | Code, `PN_501 txts -> Return (501, txts)
       | Code, `PN_504 txts -> Return (504, txts)
+      | Code, `TN_451 txts -> Return (451, txts)
       | Code, `PP_250 txts -> Return (250, txts)
       | Response_or w, v -> (
           match (w, v) with
@@ -703,9 +704,9 @@ let m_dot ctx =
   let open Monad in
   let* code, txts = send ctx Value.Dot () >>= fun () -> recv ctx Value.Code in
   match code with
-  | 250 -> return ()
+  | 250 -> return `Continue
   | 450 -> fail (`Temporary_failure `Mailbox_unavailable)
-  | 451 -> fail (`Temporary_failure `Error_processing)
+  | 451 -> return `Retry
   | 452 -> fail (`Temporary_failure `Action_ignored)
   | code -> fail (`Protocol (`Value (`Unexpected_response (code, txts))))
 
@@ -837,6 +838,8 @@ let pp_error ppf = function
   | `STARTTLS_unavailable -> Fmt.pf ppf "STARTTLS unavailable"
   | `Temporary_failure err -> pp_tmp_error ppf err
 
+type 's streams = (string * int * int, 's) stream Seq.t
+
 let on_error = function
   | `Monad (`Protocol (`Value (#Value.error as err))) ->
       (`Protocol err :> error)
@@ -860,8 +863,11 @@ let sendmail ({ bind; return } as impl) rdwr flow context config ?authentication
   run impl rdwr flow m1 >>| Result.map_error (fun err -> `Monad err))
   >>| Result.map_error on_error
 
-let many ({ bind; return } as impl) rdwr flow context config ?authentication
-    ~domain transactions : (((unit, error) result list, error) result, 's) io =
+let many ({ bind; return } as impl) rdwr flow context config ?(attempts= 3) ?sleep ?authentication
+    ~domain txs seq =
+  let sleep = match sleep with
+    | Some sleep -> sleep
+    | None -> fun () -> return () in
   let ( >>- ) = bind in
   let ( >>| ) x f = x >>- fun x -> return (f x) in
   let ( >>= ) x f =
@@ -872,11 +878,13 @@ let many ({ bind; return } as impl) rdwr flow context config ?authentication
   >>| Result.map_error (fun err -> `Monad err)
   >>| Result.map_error on_error
   >>= fun has_8bit_mime ->
-  let rec loop (acc : (unit, error) result list) = function
-    | [] ->
+  let rec loop ?(retry= 0) acc txs seq =
+    match txs, Seq.uncons seq with
+    | _, None -> invalid_arg "The user must provide an Seq.forever email"
+    | [], _ ->
         let quit = m_quit context in
         run impl rdwr flow quit >>- fun _ -> return (Ok (List.rev acc))
-    | (sender, recipients, mail) :: rest -> begin
+    | ((sender, recipients) :: rest), Some (mail, seq) -> begin
         let txn = m_transaction context ~has_8bit_mime sender recipients in
         run impl rdwr flow txn
         >>| Result.map_error (fun err -> `Monad err)
@@ -885,32 +893,42 @@ let many ({ bind; return } as impl) rdwr flow context config ?authentication
         | Error err ->
             let rset = m_rset context in
             run impl rdwr flow rset >>- fun _ ->
-            loop (Result.Error err :: acc) rest
+            loop (Result.Error err :: acc) rest seq
         | Ok () -> begin
             body impl rdwr flow context mail >>- function
             | Error (`Protocol (#tls as err)) ->
                 let err = (`Protocol err :> error) in
                 let rset = m_rset context in
                 run impl rdwr flow rset >>- fun _ ->
-                loop (Result.Error err :: acc) rest
+                loop (Result.Error err :: acc) rest seq
             | Ok () -> begin
                 let dot = m_dot context in
                 run impl rdwr flow dot
                 >>| Result.map_error (fun err -> `Monad err)
                 >>| Result.map_error on_error
                 >>- function
+                | Ok `Retry when retry <= attempts ->
+                    let rset = m_rset context in
+                    sleep () >>- fun () ->
+                    run impl rdwr flow rset >>- fun _ ->
+                    loop ~retry:(succ retry) acc txs seq
+                | Ok `Retry ->
+                    let rset = m_rset context in
+                    run impl rdwr flow rset >>- fun _ ->
+                    let err = `Temporary_failure `Error_processing in
+                    loop (Result.Error err :: acc) rest seq
                 | Error err ->
                     let rset = m_rset context in
                     run impl rdwr flow rset >>- fun _ ->
-                    loop (Result.Error err :: acc) rest
-                | Ok () ->
+                    loop (Result.Error err :: acc) rest seq
+                | Ok `Continue ->
                     if rest <> []
                     then
                       let rset = m_rset context in
                       run impl rdwr flow rset >>- fun _ ->
-                      loop (Result.Ok () :: acc) rest
-                    else loop (Result.Ok () :: acc) rest
+                      loop (Result.Ok () :: acc) rest seq
+                    else loop (Result.Ok () :: acc) rest seq
               end
           end
       end in
-  loop [] transactions
+  loop [] txs seq
