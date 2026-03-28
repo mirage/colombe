@@ -884,8 +884,8 @@ let many ({ bind; return } as impl) rdwr flow context config ?(attempts= 3) ?sle
     | [], _ ->
         let quit = m_quit context in
         run impl rdwr flow quit >>- fun _ -> return (Ok (List.rev acc))
-    | ((sender, recipients) :: rest), Some (mail, seq) -> begin
-        let txn = m_transaction context ~has_8bit_mime sender recipients in
+    | ((sender, rcpt) :: rest), Some (mail, seq) -> begin
+        let txn = m_transaction context ~has_8bit_mime sender [ rcpt ] in
         run impl rdwr flow txn
         >>| Result.map_error (fun err -> `Monad err)
         >>| Result.map_error on_error
@@ -893,14 +893,14 @@ let many ({ bind; return } as impl) rdwr flow context config ?(attempts= 3) ?sle
         | Error err ->
             let rset = m_rset context in
             run impl rdwr flow rset >>- fun _ ->
-            loop (Result.Error err :: acc) rest seq
+            loop ((rcpt, Result.Error err) :: acc) rest seq
         | Ok () -> begin
             body impl rdwr flow context mail >>- function
             | Error (`Protocol (#tls as err)) ->
                 let err = (`Protocol err :> error) in
                 let rset = m_rset context in
                 run impl rdwr flow rset >>- fun _ ->
-                loop (Result.Error err :: acc) rest seq
+                loop ((rcpt, Result.Error err) :: acc) rest seq
             | Ok () -> begin
                 let dot = m_dot context in
                 run impl rdwr flow dot
@@ -916,18 +916,18 @@ let many ({ bind; return } as impl) rdwr flow context config ?(attempts= 3) ?sle
                     let rset = m_rset context in
                     run impl rdwr flow rset >>- fun _ ->
                     let err = `Temporary_failure `Error_processing in
-                    loop (Result.Error err :: acc) rest seq
+                    loop ((rcpt, Result.Error err) :: acc) rest seq
                 | Error err ->
                     let rset = m_rset context in
                     run impl rdwr flow rset >>- fun _ ->
-                    loop (Result.Error err :: acc) rest seq
+                    loop ((rcpt, Result.Error err) :: acc) rest seq
                 | Ok `Continue ->
                     if rest <> []
                     then
                       let rset = m_rset context in
                       run impl rdwr flow rset >>- fun _ ->
-                      loop (Result.Ok () :: acc) rest seq
-                    else loop (Result.Ok () :: acc) rest seq
+                      loop ((rcpt, Result.Ok ()) :: acc) rest seq
+                    else loop ((rcpt, Result.Ok ()) :: acc) rest seq
               end
           end
       end in

@@ -152,9 +152,9 @@ val many :
   ?sleep:(unit -> (unit, 's) io) ->
   ?authentication:authentication ->
   domain:Domain.t ->
-  (reverse_path * forward_path list) list ->
+  (reverse_path * forward_path) list ->
   (string * int * int, 's) stream Seq.t ->
-  (((unit, error) result list, error) result, 's) io
+  (((forward_path * (unit, error) result) list, error) result, 's) io
 (** [many impl rdwr flow ctx tls_config ?authentication ~domain transactions]
     sends multiple emails over a single TCP+STARTTLS connection. Each
     transaction is a [(sender, recipients, mail)] tuple. The connection is set

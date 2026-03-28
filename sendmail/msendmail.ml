@@ -170,7 +170,7 @@ let rec terminate orphans = match Miou.care orphans with
       let _ = Miou.await prm in
       terminate orphans
 
-type tx = (unit, Sendmail_with_starttls.error) result
+type tx = Colombe.Forward_path.t * (unit, Sendmail_with_starttls.error) result
 
 let many ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
     ?cfg:user's_tls_config ?authenticator:user's_authenticator ?attempts ?authentication

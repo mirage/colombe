@@ -42,7 +42,7 @@ val sendmail :
   (string * int * int) Flux.stream ->
   (unit, [ `Msg of string | Sendmail_with_starttls.error ]) result
 
-type tx = (unit, Sendmail_with_starttls.error) result
+type tx = Colombe.Forward_path.t * (unit, Sendmail_with_starttls.error) result
 
 val many :
   ?encoder:(unit -> bytes) ->
@@ -56,7 +56,6 @@ val many :
   ?authenticator:X509.Authenticator.t ->
   ?attempts:int ->
   ?authentication:Sendmail.authentication ->
-  (Colombe.Reverse_path.t
-  * Colombe.Forward_path.t list) list ->
+  (Colombe.Reverse_path.t * Colombe.Forward_path.t) list ->
   (string * int * int) Flux.stream Seq.t ->
   (tx list, [ `Msg of string | Sendmail_with_starttls.error ]) result
