@@ -157,23 +157,30 @@ let submit ?encoder ?decoder ?queue he ~destination:dst ?port ~domain
             (Printexc.to_string exn)
     end
 
-let rec clean_up orphans = match Miou.care orphans with
+let rec clean_up orphans =
+  match Miou.care orphans with
   | Some None | None -> ()
   | Some (Some prm) ->
       let _ = Miou.await prm in
       clean_up orphans
 
-let rec terminate orphans = match Miou.care orphans with
-  | Some None -> Miou.yield (); terminate orphans
+let rec terminate orphans =
+  match Miou.care orphans with
+  | Some None ->
+      Miou.yield () ;
+      terminate orphans
   | None -> ()
   | Some (Some prm) ->
       let _ = Miou.await prm in
       terminate orphans
 
-type tx = Colombe.Forward_path.t * (unit, Sendmail_with_starttls.error) result
+type tx =
+  Colombe.Reverse_path.t
+  * Colombe.Forward_path.t
+  * (unit, Sendmail_with_starttls.error) result
 
 let many ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
-    ?cfg:user's_tls_config ?authenticator:user's_authenticator ?attempts ?authentication
+    ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
     txs seq =
   let* tls_cfg = tls_config user's_tls_config user's_authenticator in
   let* _, flow =
@@ -184,29 +191,30 @@ let many ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
         let dsts = List.map (fun ipaddr -> (ipaddr, port)) ipaddrs in
         Mnet_happy_eyeballs.connect_ip he dsts in
   let ctx =
-    Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue () in
+    Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
+  in
   let finally = Mnet.TCP.close in
   let resource = Miou.Ownership.create ~finally flow in
   Miou.Ownership.own resource ;
   let orphans = Miou.orphans () in
   let fn stream =
-    clean_up orphans;
+    clean_up orphans ;
     let into, q = Flux.Sink.bqueue ~size:0x7ff in
     let seq = Flux.Bqueue.to_seq q in
     let dispenser = Seq.to_dispenser seq in
     let dispenser = Fun.compose Miou_scheduler.inj dispenser in
-    let _ = Miou.async ~orphans @@ fun () ->
+    let _ =
+      Miou.async ~orphans @@ fun () ->
       let finally = Flux.Bqueue.close in
       let resource = Miou.Ownership.create ~finally q in
-      Miou.Ownership.own resource;
-      Flux.Stream.into into stream;
+      Miou.Ownership.own resource ;
+      Flux.Stream.into into stream ;
       Miou.Ownership.release resource in
     dispenser in
   let seq = Seq.map fn seq in
   (* NOTE(dinosaure): should we let the user to decide how many seconds we should wait? *)
-  let sleep () = Mkernel.sleep 60_000_000_000; Miou_scheduler.inj () in
   let result =
-    Sendmail_with_starttls.many miou tcp flow ctx tls_cfg ?attempts ~sleep ?authentication
+    Sendmail_with_starttls.many miou tcp flow ctx tls_cfg ?authentication
       ~domain txs seq
     |> Miou_scheduler.prj
     |> open_sendmail_with_starttls_error in
