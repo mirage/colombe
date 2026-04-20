@@ -1,3 +1,14 @@
+### v0.13.0 2026-04-20 Paris (France)
+
+- Fix typo on `sendmail-miou-unix` (@kit-ty-kate, #87)
+- Provide the new package `msendmail` (@dinosaure, #89)
+- Implement `Sendmail_with_starttls.many` (@dinosaure, #89)
+- Fix buffer ownership on our reply decoder (@dinosaure, #89)
+- Improve `colombe.emile` (and avoid impossible failures) (@dinosaure, #89)
+- Handle the code 451 (@dinosaure, #89)
+- Add some tests for `colombe.emile` (@dinosaure, #90)
+- Add documentation for `msendmail` (@dinosaure, #91)
+
 ### v0.12.1 2025-11-28 Paris (France)
 
 - Apply `ocamlformat.0.28.1` (@dinosaure, #86)
