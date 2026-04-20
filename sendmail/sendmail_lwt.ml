@@ -113,12 +113,14 @@ let submit ?encoder ?decoder ?queue ~destination ?port ~domain
   match protocol with
   | `With_starttls tls ->
       (match (destination, port) with
-      | `Ipaddr ipaddr, Some port ->
-          Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
-      | `Ipaddr ipaddr, None ->
-          Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 587))
-      | `Domain_name domain_name, port ->
-          resolve (Domain_name.to_string domain_name) ?port "submission")
+        | `Ipaddr ipaddr, Some port ->
+            Lwt.return_ok
+              (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
+        | `Ipaddr ipaddr, None ->
+            Lwt.return_ok
+              (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 587))
+        | `Domain_name domain_name, port ->
+            resolve (Domain_name.to_string domain_name) ?port "submission")
       >>? fun addr ->
       let socket =
         Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0 in
@@ -135,28 +137,28 @@ let submit ?encoder ?decoder ?queue ~destination ?port ~domain
       >|= open_error
   | `With_tls tls ->
       (match (destination, port) with
-      | `Ipaddr ipaddr, Some port ->
-          let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port) in
-          let socket =
-            Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0
-          in
-          connect socket addr >>? fun () ->
-          Tls_lwt.Unix.client_of_fd tls socket
-          >|= Tls_lwt.of_t ~close:(fun () -> Lwt_unix.close socket)
-          >|= Result.ok
-      | `Ipaddr ipaddr, None ->
-          let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 465) in
-          let socket =
-            Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0
-          in
-          connect socket addr >>? fun () ->
-          Tls_lwt.Unix.client_of_fd tls socket
-          >|= Tls_lwt.of_t ~close:(fun () -> Lwt_unix.close socket)
-          >|= Result.ok
-      | `Domain_name domain_name, port ->
-          let port = Option.value ~default:465 port in
-          Tls_lwt.connect_ext tls (Domain_name.to_string domain_name, port)
-          >|= Result.ok)
+        | `Ipaddr ipaddr, Some port ->
+            let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port) in
+            let socket =
+              Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0
+            in
+            connect socket addr >>? fun () ->
+            Tls_lwt.Unix.client_of_fd tls socket
+            >|= Tls_lwt.of_t ~close:(fun () -> Lwt_unix.close socket)
+            >|= Result.ok
+        | `Ipaddr ipaddr, None ->
+            let addr = Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 465) in
+            let socket =
+              Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0
+            in
+            connect socket addr >>? fun () ->
+            Tls_lwt.Unix.client_of_fd tls socket
+            >|= Tls_lwt.of_t ~close:(fun () -> Lwt_unix.close socket)
+            >|= Result.ok
+        | `Domain_name domain_name, port ->
+            let port = Option.value ~default:465 port in
+            Tls_lwt.connect_ext tls (Domain_name.to_string domain_name, port)
+            >|= Result.ok)
       >>? fun (ic, oc) ->
       let ctx = Colombe.State.Context.make ?encoder ?decoder () in
       Sendmail.sendmail lwt rdwr { ic; oc } ctx ~domain ?authentication sender
@@ -170,12 +172,12 @@ let sendmail ?encoder ?decoder ?queue ~destination ?port ~domain
     ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
     sender recipients mail =
   (match (destination, port) with
-  | `Ipaddr ipaddr, Some port ->
-      Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
-  | `Ipaddr ipaddr, None ->
-      Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 25))
-  | `Domain_name domain_name, port ->
-      resolve (Domain_name.to_string domain_name) ?port "smtp")
+    | `Ipaddr ipaddr, Some port ->
+        Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, port))
+    | `Ipaddr ipaddr, None ->
+        Lwt.return_ok (Unix.ADDR_INET (Ipaddr_unix.to_inet_addr ipaddr, 25))
+    | `Domain_name domain_name, port ->
+        resolve (Domain_name.to_string domain_name) ?port "smtp")
   >>? fun addr ->
   let socket =
     Lwt_unix.socket (Unix.domain_of_sockaddr addr) Unix.SOCK_STREAM 0 in

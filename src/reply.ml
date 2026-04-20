@@ -198,14 +198,12 @@ module Decoder = struct
 
   let is_digit = function '0' .. '9' -> true | _ -> false
 
-  external unsafe_get_uint8 : bytes -> int -> int = "%string_unsafe_get"
-
   let number k decoder =
     let raw, off, len = while1 is_digit decoder in
     let idx = ref 0 in
     let res = ref 0 in
     while !idx < len do
-      res := (!res * 10) + (unsafe_get_uint8 raw (off + !idx) - 48) ;
+      res := (!res * 10) + (Bytes.get_uint8 raw (off + !idx) - 48) ;
       incr idx
     done ;
     if len <> 3 then fail decoder (`Invalid_code !res) else k !res decoder
@@ -220,28 +218,21 @@ module Decoder = struct
         | Some ' ' ->
             junk_char decoder ;
             let raw_crlf, off, len = peek_while_eol decoder in
-            let reply =
-              v code
-                (List.rev (Bytes.sub_string raw_crlf off (len - 2) :: lines))
-            in
+            let str = Bytes.sub_string raw_crlf off (len - 2) in
+            let reply = v code (List.rev (str :: lines)) in
             decoder.pos <- decoder.pos + len ;
             k reply decoder
         | Some '-' ->
             junk_char decoder ;
             let raw_crlf, off, len = peek_while_eol decoder in
             decoder.pos <- decoder.pos + len ;
+            let str = Bytes.sub_string raw_crlf off (len - 2) in
             if end_of_input decoder = decoder.pos
             then
-              let k code' decoder =
-                go code code'
-                  (Bytes.sub_string raw_crlf off (len - 2) :: lines)
-                  decoder in
+              let k code' decoder = go code code' (str :: lines) decoder in
               prompt (number k) decoder
             else
-              let k code' decoder =
-                go code code'
-                  (Bytes.sub_string raw_crlf off (len - 2) :: lines)
-                  decoder in
+              let k code' decoder = go code code' (str :: lines) decoder in
               number k decoder
         | Some chr -> leave_with decoder (`Unexpected_char chr)
         | None -> leave_with decoder `End_of_input in
@@ -250,31 +241,31 @@ module Decoder = struct
       | Some ' ' ->
           junk_char decoder ;
           let raw_crlf, off, len = peek_while_eol decoder in
-          let reply = v code [ Bytes.sub_string raw_crlf off (len - 2) ] in
+          let str = Bytes.sub_string raw_crlf off (len - 2) in
+          let reply = v code [ str ] in
           decoder.pos <- decoder.pos + len ;
           k reply decoder
       | Some '-' ->
           junk_char decoder ;
           let raw_crlf, off, len = peek_while_eol decoder in
           decoder.pos <- decoder.pos + len ;
+          let str = Bytes.sub_string raw_crlf off (len - 2) in
           if end_of_input decoder = decoder.pos
           then
-            let k code' decoder =
-              go code code' [ Bytes.sub_string raw_crlf off (len - 2) ] decoder
-            in
+            let k code' decoder = go code code' [ str ] decoder in
             prompt (number k) decoder
           else
-            let k code' decoder =
-              go code code' [ Bytes.sub_string raw_crlf off (len - 2) ] decoder
-            in
+            let k code' decoder = go code code' [ str ] decoder in
             number k decoder
       | Some chr ->
           let raw_crlf, off, len = peek_while_eol decoder in
           if len = 2 (* CRLF *)
-          then (
-            let reply = v code [ Bytes.sub_string raw_crlf off (len - 2) ] in
+          then begin
+            let str = Bytes.sub_string raw_crlf off (len - 2) in
+            let reply = v code [ str ] in
             decoder.pos <- decoder.pos + len ;
-            k reply decoder)
+            k reply decoder
+          end
           else leave_with decoder (`Unexpected_char chr)
       | None -> leave_with decoder `End_of_input in
     number k decoder

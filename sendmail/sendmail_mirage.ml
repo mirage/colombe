@@ -128,15 +128,15 @@ struct
     Lwt.return (tls_config user's_tls_config user's_authenticator)
     >>? fun tls_cfg ->
     (match destination with
-    | `Domain_name domain_name ->
-        Happy_eyeballs.connect_host he domain_name ports
-    | `Ipaddrs ipaddrs ->
-        let destinations =
-          List.map
-            (fun port -> List.map (fun ipaddr -> (ipaddr, port)) ipaddrs)
-            ports in
-        let destinations = List.concat destinations in
-        Happy_eyeballs.connect_ip he destinations)
+      | `Domain_name domain_name ->
+          Happy_eyeballs.connect_host he domain_name ports
+      | `Ipaddrs ipaddrs ->
+          let destinations =
+            List.map
+              (fun port -> List.map (fun ipaddr -> (ipaddr, port)) ipaddrs)
+              ports in
+          let destinations = List.concat destinations in
+          Happy_eyeballs.connect_ip he destinations)
     >>? fun ((_, port), socket) ->
     let process () =
       let protocol =
@@ -186,15 +186,15 @@ struct
     Lwt.return (tls_config user's_tls_config user's_authenticator)
     >>? fun tls_cfg ->
     (match destination with
-    | `Domain_name domain_name ->
-        Happy_eyeballs.connect_host he domain_name ports
-    | `Ipaddrs ipaddrs ->
-        let destinations =
-          List.map
-            (fun port -> List.map (fun ipaddr -> (ipaddr, port)) ipaddrs)
-            ports in
-        let destinations = List.concat destinations in
-        Happy_eyeballs.connect_ip he destinations)
+      | `Domain_name domain_name ->
+          Happy_eyeballs.connect_host he domain_name ports
+      | `Ipaddrs ipaddrs ->
+          let destinations =
+            List.map
+              (fun port -> List.map (fun ipaddr -> (ipaddr, port)) ipaddrs)
+              ports in
+          let destinations = List.concat destinations in
+          Happy_eyeballs.connect_ip he destinations)
     >>? fun (_, socket) ->
     let flow = TCP.make socket in
     let process () =

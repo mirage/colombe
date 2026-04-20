@@ -294,8 +294,8 @@ let m0 ctx ?authentication ~domain sender recipients =
   Log.debug (fun m ->
       m "8BITMIME extension: %b" has_8bit_mime_transport_extension) ;
   (match authentication with
-  | Some a -> auth ctx a.mechanism (Some (a.username, a.password))
-  | None -> return `Anonymous)
+    | Some a -> auth ctx a.mechanism (Some (a.username, a.password))
+    | None -> return `Anonymous)
   >>= fun status ->
   Log.debug (fun m -> m "Auth status: %a" pp_status status) ;
   let parameters =

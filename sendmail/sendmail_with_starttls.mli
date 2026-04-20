@@ -107,6 +107,8 @@ type error =
 
 val pp_error : error Fmt.t
 
+type 's streams = (string * int * int, 's) stream Seq.t
+
 val sendmail :
   's impl ->
   ('flow, 's) rdwr ->
@@ -132,10 +134,31 @@ val sendmail :
     - [recipients] recipients of the mail
     - [mail] stream of the mail
 
-    This process try to send a mail according [RFC4409]. It ensures to use
+    This process tries to send a mail according [RFC4409]. It ensures to use
     [STARTTLS] (eg. [RFC3207]) while the process according TLS configuration
     [tls_config]. If [authentication] is given, it does the authentication only
     while TLS flow. Mail is sended only while TLS flow.
 
     The stream [mail] must respects same assumptions as
     {!Sendmail_lwt.sendmail}. *)
+
+val many :
+  's impl ->
+  ('flow, 's) rdwr ->
+  'flow ->
+  Context_with_tls.t ->
+  Tls.Config.client ->
+  ?authentication:authentication ->
+  domain:Domain.t ->
+  (reverse_path * forward_path) list ->
+  (string * int * int, 's) stream Seq.t ->
+  ( ((reverse_path * forward_path * (unit, error) result) list, error) result,
+    's )
+  io
+(** [many impl rdwr flow ctx tls_config ?authentication ~domain transactions]
+    sends multiple emails over a single TCP+STARTTLS connection. Each
+    transaction is a [(sender, recipients, mail)] tuple. The connection is set
+    up once (EHLO, STARTTLS, AUTH), then for each transaction: MAIL FROM, RCPT
+    TO, DATA, body, DOT, RSET. Returns a list of results, one per transaction.
+    If a transaction fails, the connection is reset and the next transaction is
+    attempted. *)

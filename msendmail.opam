@@ -6,8 +6,8 @@ homepage:     "https://github.com/mirage/colombe"
 bug-reports:  "https://github.com/mirage/colombe/issues"
 dev-repo:     "git+https://github.com/mirage/colombe.git"
 doc:          "https://mirage.github.io/colombe/"
-synopsis:     "Implementation of the sendmail command"
-description: """A library to be able to send an email."""
+synopsis:     "Implementation of the sendmail command for Solo5/mkernel"
+description: """A library to be able to send an email for Solo5/mkernel"""
 
 build: [
   [ "dune" "build" "-p" name "-j" jobs ]
@@ -15,19 +15,14 @@ build: [
 ]
 
 depends: [
-  "ocaml" {>= "5.2"}
+  "ocaml" {>= "5.3.0"}
   "dune" {>= "2.0"}
-  "colombe" {= version}
-  "tls" {>= "1.0.2"}
-  "base64" {>= "3.0.0"}
-  "ke" {>= "0.4"}
-  "logs"
-  "rresult"
-  "hxd" {>= "0.3.2"}
-  "bigstringaf" {>= "0.2.0"}
-  "emile" {>= "0.8" & with-test}
-  "mrmime" {>= "0.3.2" & with-test}
-  "cstruct" {>= "6.0.0"}
-  "alcotest" {with-test}
+  "sendmail" {= version}
+  "domain-name"
+  "mnet"
+  "mnet-tls"
+  "flux"
+  "mnet-happy-eyeballs"
+  "ca-certs-nss" {>= "3.108-1"}
 ]
 x-maintenance-intent: [ "(latest)" ]
