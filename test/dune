@@ -23,3 +23,16 @@
  (package sendmail)
  (action
   (run %{test} --color=always)))
+
+(executable
+ (name test_emile)
+ (modules test_emile)
+ (libraries colombe colombe.emile emile alcotest ipaddr))
+
+(rule
+ (alias runtest)
+ (deps
+  (:test test_emile.exe))
+ (package colombe)
+ (action
+  (run %{test} --color=always)))
