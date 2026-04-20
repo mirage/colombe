@@ -1,3 +1,30 @@
+(** {1 Sendmail with [mkernel]/[mnet].}
+
+    This implementation proposes to reuse the logic for sending emails for
+    [mkernel]/[mnet].
+
+    It exposes the Miou scheduler so that the actions for injecting and
+    projecting values can be reused (see the {!module:Miou_scheduler} module and
+    the {!val:miou} value).
+
+    Furthermore, this implementation exposes the implementation of two
+    protocols: {!val:tcp} and {!val:tls} (using [mnet] and [mnet.tls]). This
+    allows an email to be sent from a TCP/IP connection or from an already
+    established TLS connection (i.e. one where the handshake has already taken
+    place).
+
+    Finally, like the other derivatives, msendmail offers three ways to send
+    emails:
+    + the most common method using {!val:sendmail}, which involves initiating
+      communication via a TCP/IP connection using [STARTTLS] and simply
+      transmitting the email
+    + a method which involves initiating, this time, a TLS connection by default
+      to {!val:submit} an email to an SMTP submission server (which will likely
+      require authentication). Basically, this is when you wish to send an email
+      under a specific authority such as Gmail.
+    + a way to send {!val:many} emails (like {!val:sendmail}) using a single
+      TCP/IP and a [STARTTLS] connection. *)
+
 module Miou_scheduler : sig
   type t
 
@@ -8,7 +35,9 @@ end
 val miou : Miou_scheduler.t Colombe.Sigs.impl
 val tcp : (Mnet.TCP.flow, Miou_scheduler.t) Colombe.Sigs.rdwr
 val tls : (Mnet_tls.t, Miou_scheduler.t) Colombe.Sigs.rdwr
+
 val pp_error : [ `Msg of string | Sendmail_with_starttls.error ] Fmt.t
+(** Pretty printer of errors. *)
 
 val submit :
   ?encoder:(unit -> bytes) ->
