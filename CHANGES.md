@@ -1,3 +1,7 @@
+### v0.13.1 2026-10-06 Paris (France)
+
+- Upgrade to `mnet.0.0.7` (@dinosaure, #93)
+
 ### v0.13.0 2026-04-20 Paris (France)
 
 - Fix typo on `sendmail-miou-unix` (@kit-ty-kate, #87)
