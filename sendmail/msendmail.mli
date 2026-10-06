@@ -33,7 +33,11 @@ module Miou_scheduler : sig
 end
 
 val miou : Miou_scheduler.t Colombe.Sigs.impl
-val tcp : (Mnet.TCP.flow, Miou_scheduler.t) Colombe.Sigs.rdwr
+
+type flow
+
+val flow_of_fd : Mnet.TCP.direct Mnet.TCP.flow -> flow
+val tcp : (flow, Miou_scheduler.t) Colombe.Sigs.rdwr
 val tls : (Mnet_tls.t, Miou_scheduler.t) Colombe.Sigs.rdwr
 
 val pp_error : [ `Msg of string | Sendmail_with_starttls.error ] Fmt.t

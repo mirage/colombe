@@ -741,6 +741,7 @@ let run : type s flow.
   go m
 
 let _dot = "."
+let is_dot buf off len = len >= 1 && buf.[off] = '.'
 
 let body ({ bind; return } as state) rdwr flow ctx mail =
   let ( >>= ) = bind in
@@ -749,7 +750,12 @@ let body ({ bind; return } as state) rdwr flow ctx mail =
   | None ->
       let rec go = function
         | Some (_, _, 0) -> mail () >>= go
-        | Some (buf, off, len) -> rdwr.wr flow buf off len >>= mail >>= go
+        | Some (buf, off, len) ->
+            if is_dot buf off len
+            then
+              rdwr.wr flow _dot 0 1 >>= fun () ->
+              rdwr.wr flow buf off len >>= mail >>= go
+            else rdwr.wr flow buf off len >>= mail >>= go
         | None -> return (Ok ()) in
       mail () >>= go
   | Some tls ->
@@ -757,10 +763,9 @@ let body ({ bind; return } as state) rdwr flow ctx mail =
         mail () >>= function
         | None -> return (Ok ())
         | Some (_, _, 0) -> go ()
-        | Some (buf, off, len) -> (
+        | Some (buf, off, len) -> begin
             let raw = String.sub buf off len in
-            let raw =
-              if len >= 1 && buf.[0] = '.' then [ _dot; raw ] else [ raw ] in
+            let raw = if is_dot buf off len then [ _dot; raw ] else [ raw ] in
             let { Flow.run = run' } = StartTLS.writev tls raw in
             let m =
               ( run' @@ function
@@ -774,7 +779,8 @@ let body ({ bind; return } as state) rdwr flow ctx mail =
               |> Flow.join in
             run state rdwr flow m >>= function
             | Ok () -> go ()
-            | Error _ as err -> return err) in
+            | Error _ as err -> return err
+          end in
       go ()
 
 type tls =

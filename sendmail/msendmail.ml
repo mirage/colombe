@@ -24,13 +24,44 @@ let open_error = function Ok _ as v -> v | Error (#error as err) -> Error err
 let error_msgf fmt = Fmt.kstr (fun msg -> Error (`Msg msg)) fmt
 let ( let* ) = Result.bind
 
+type flow = {
+  fd : Mnet.TCP.direct Mnet.TCP.flow;
+  mutable pending : string list;
+  mutable pos : int;
+}
+
+let flow_of_fd fd = { fd; pending = []; pos = 0 }
+
+let rec rd flow buf off len =
+  match flow.pending with
+  | [] ->
+      begin match Mnet.TCP.read flow.fd with
+      | Ok strs ->
+          let strs = List.filter (fun str -> String.length str > 0) strs in
+          if strs = []
+          then `End
+          else begin
+            flow.pending <- strs ;
+            flow.pos <- 0 ;
+            rd flow buf off len
+          end
+      | Error (`Eof | `Refused) -> `End
+      end
+  | str :: rest ->
+      let len = Int.min len (String.length str - flow.pos) in
+      Bytes.blit_string str flow.pos buf off len ;
+      if flow.pos + len = String.length str
+      then begin
+        flow.pending <- rest ;
+        flow.pos <- 0
+      end
+      else flow.pos <- flow.pos + len ;
+      `Len len
+
 let tcp =
   let open Miou_scheduler in
-  let rd flow buf off len =
-    match Mnet.TCP.read flow buf ~off ~len with
-    | 0 -> inj `End
-    | len -> inj (`Len len) in
-  let wr flow str off len = inj (Mnet.TCP.write flow str ~off ~len) in
+  let rd flow buf off len = inj (rd flow buf off len) in
+  let wr flow str off len = inj (Mnet.TCP.write flow.fd str ~off ~len) in
   { Colombe.Sigs.rd; wr }
 
 let tls =
@@ -67,7 +98,8 @@ let submit ?encoder ?decoder ?queue he ~destination:dst ?port ~domain
   let ports = match port with None -> [ 465; 587 ] | Some port -> [ port ] in
   let into, bqueue = Flux.Sink.bqueue ~size:0x7ff in
   let* tls_cfg = tls_config user's_tls_config user's_authenticator in
-  let* (_, port), flow = Mnet_happy_eyeballs.connect he dst ports in
+  let kind = Mnet.TCP.direct in
+  let* (_, port), flow = Mnet_happy_eyeballs.connect ~kind he dst ports in
   let protocol =
     if port = 587 then `With_starttls tls_cfg else `With_tls tls_cfg in
   match protocol with
@@ -91,8 +123,8 @@ let submit ?encoder ?decoder ?queue he ~destination:dst ?port ~domain
         let dispenser = Seq.to_dispenser seq in
         let dispenser = Fun.compose Miou_scheduler.inj dispenser in
         let result =
-          Sendmail_with_starttls.sendmail miou tcp flow ctx cfg ?authentication
-            ~domain sender recipients dispenser
+          Sendmail_with_starttls.sendmail miou tcp (flow_of_fd flow) ctx cfg
+            ?authentication ~domain sender recipients dispenser
           |> Miou_scheduler.prj
           |> open_sendmail_with_starttls_error
           |> open_error in
@@ -183,13 +215,14 @@ let many ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
     ?cfg:user's_tls_config ?authenticator:user's_authenticator ?authentication
     txs seq =
   let* tls_cfg = tls_config user's_tls_config user's_authenticator in
+  let kind = Mnet.TCP.direct in
   let* _, flow =
     match dst with
     | `Host domain_name ->
-        Mnet_happy_eyeballs.connect_host he domain_name [ port ]
+        Mnet_happy_eyeballs.connect_host ~kind he domain_name [ port ]
     | `Ips ipaddrs ->
         let dsts = List.map (fun ipaddr -> (ipaddr, port)) ipaddrs in
-        Mnet_happy_eyeballs.connect_ip he dsts in
+        Mnet_happy_eyeballs.connect_ip ~kind he dsts in
   let ctx =
     Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
   in
@@ -214,8 +247,8 @@ let many ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
   let seq = Seq.map fn seq in
   (* NOTE(dinosaure): should we let the user to decide how many seconds we should wait? *)
   let result =
-    Sendmail_with_starttls.many miou tcp flow ctx tls_cfg ?authentication
-      ~domain txs seq
+    Sendmail_with_starttls.many miou tcp (flow_of_fd flow) ctx tls_cfg
+      ?authentication ~domain txs seq
     |> Miou_scheduler.prj
     |> open_sendmail_with_starttls_error in
   terminate orphans ;
@@ -227,13 +260,14 @@ let sendmail ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
     sender recipients stream =
   let into, bqueue = Flux.Sink.bqueue ~size:0x7ff in
   let* tls_cfg = tls_config user's_tls_config user's_authenticator in
+  let kind = Mnet.TCP.direct in
   let* _, flow =
     match dst with
     | `Host domain_name ->
-        Mnet_happy_eyeballs.connect_host he domain_name [ port ]
+        Mnet_happy_eyeballs.connect_host ~kind he domain_name [ port ]
     | `Ips ipaddrs ->
         let dsts = List.map (fun ipaddr -> (ipaddr, port)) ipaddrs in
-        Mnet_happy_eyeballs.connect_ip he dsts in
+        Mnet_happy_eyeballs.connect_ip ~kind he dsts in
   let ctx =
     Sendmail_with_starttls.Context_with_tls.make ?encoder ?decoder ?queue ()
   in
@@ -253,8 +287,8 @@ let sendmail ?encoder ?decoder ?queue he ~destination:dst ?(port = 25) ~domain
     let dispenser = Seq.to_dispenser seq in
     let dispenser = Fun.compose Miou_scheduler.inj dispenser in
     let result =
-      Sendmail_with_starttls.sendmail miou tcp flow ctx tls_cfg ?authentication
-        ~domain sender recipients dispenser
+      Sendmail_with_starttls.sendmail miou tcp (flow_of_fd flow) ctx tls_cfg
+        ?authentication ~domain sender recipients dispenser
       |> Miou_scheduler.prj
       |> open_sendmail_with_starttls_error in
     Miou.Ownership.release resource ;
