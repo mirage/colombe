@@ -19,7 +19,7 @@ depends: [
   "dune" {>= "2.0"}
   "sendmail" {= version}
   "domain-name"
-  "mnet"
+  "mnet" {>= "0.0.7"}
   "mnet-tls"
   "flux" {>= "0.0.1~beta4"}
   "mnet-happy-eyeballs"
